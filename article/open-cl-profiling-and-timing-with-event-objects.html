@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Profiling and Timing with Event Objects - opencl</title>
+    <meta name="description" content="OpenCL event objects serve as both synchronization primitives and high-precision instrumentation tools for tracking asynchronous device operations. This article explores how event objects facilitate profiling and timing measurements across OpenCL workloa">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-profiling-and-timing-with-event-objects">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Profiling and Timing with Event Objects - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-profiling-and-timing-with-event-objects" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL event objects serve as both synchronization primitives and high-precision instrumentation tools for tracking asynchronous device operations. This article explores how event objects facilitate profiling and timing measurements across OpenCL workloa" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-profiling-and-timing-with-event-objects">OpenCL Profiling
+and Timing with Event Objects</h1>
+<p>OpenCL event objects serve as both synchronization primitives and
+high-precision instrumentation tools for tracking asynchronous device
+operations. This article explores how event objects facilitate profiling
+and timing measurements across OpenCL workloads, detailing the setup of
+profiling-enabled command queues, the collection of device-level
+timestamps, and the calculation of precise kernel execution and memory
+transfer metrics without the interference of host-side latency.</p>
+<h3 id="enabling-queue-profiling">Enabling Queue Profiling</h3>
+<p>Profiling in OpenCL begins at the command-queue level. By default,
+command queues execute commands asynchronously without capturing
+performance timestamps to avoid unnecessary overhead. To capture
+profiling data, the host application must explicitly enable profiling by
+passing the <code>CL_QUEUE_PROFILING_ENABLE</code> flag in the queue
+properties during creation via
+<code>clCreateCommandQueueWithProperties</code> (or
+<code>clCreateCommandQueue</code> in OpenCL 1.x). Without this flag, any
+subsequent profiling queries on event objects associated with the queue
+will return a <code>CL_PROFILING_INFO_NOT_AVAILABLE</code> error.</p>
+<h3 id="associating-events-with-asynchronous-commands">Associating
+Events with Asynchronous Commands</h3>
+<p>Every OpenCL command that enqueues work to a device—such as kernel
+executions (<code>clEnqueueNDRangeKernel</code>) and memory transfers
+(<code>clEnqueueReadBuffer</code>,
+<code>clEnqueueWriteBuffer</code>)—accepts a pointer to a
+<code>cl_event</code> variable as its final argument. When passed, the
+OpenCL runtime instantiates an event object that monitors the lifecycle
+of that specific command. Because operations in OpenCL are non-blocking
+on the host, this event provides the handle necessary to track when the
+command transitions between different execution states on the
+device.</p>
+<h3 id="capturing-state-timestamps">Capturing State Timestamps</h3>
+<p>Once the associated command finishes executing (confirmed via
+<code>clWaitForEvents</code> or a completion callback), the event object
+retains a set of hardware-level timestamps. These metrics are retrieved
+using the function <code>clGetEventProfilingInfo</code>. The runtime
+records timestamps as 64-bit unsigned integers (<code>cl_ulong</code>)
+measured in nanoseconds, corresponding to specific milestones in the
+command’s lifecycle:</p>
+<ul>
+<li><strong><code>CL_PROFILING_COMMAND_QUEUED</code></strong>: The exact
+host timestamp when the command was placed into the command queue.</li>
+<li><strong><code>CL_PROFILING_COMMAND_SUBMIT</code></strong>: The
+timestamp when the command was flushed from the host queue and submitted
+to the target compute device.</li>
+<li><strong><code>CL_PROFILING_COMMAND_START</code></strong>: The
+timestamp when the device actually began processing the command.</li>
+<li><strong><code>CL_PROFILING_COMMAND_END</code></strong>: The
+timestamp when the device finished executing the command.</li>
+<li><strong><code>CL_PROFILING_COMMAND_COMPLETE</code></strong>: The
+timestamp when the command and all its subsequent child operations fully
+resolved.</li>
+</ul>
+<h3 id="calculating-execution-metrics-and-overheads">Calculating
+Execution Metrics and Overheads</h3>
+<p>By taking the difference between these retrieved timestamps,
+developers can derive granular performance statistics. Subtracting
+<code>CL_PROFILING_COMMAND_START</code> from
+<code>CL_PROFILING_COMMAND_END</code> isolates the pure compute or
+data-transfer duration on the hardware, measured in nanoseconds,
+independent of CPU activity.</p>
+<p>Furthermore, comparing intermediate timestamps exposes system
+bottlenecks:</p>
+<ul>
+<li><strong>Host-to-Device Queue Latency:</strong>
+<code>CL_PROFILING_COMMAND_SUBMIT - CL_PROFILING_COMMAND_QUEUED</code>
+measures how long a command stalled on the host before dispatch.</li>
+<li><strong>Device Scheduling Delay:</strong>
+<code>CL_PROFILING_COMMAND_START - CL_PROFILING_COMMAND_SUBMIT</code>
+highlights stalls caused by command-queue dependencies, resource
+contention, or device saturation prior to execution.</li>
+</ul>
+<h3 id="advantages-over-host-side-timing">Advantages Over Host-Side
+Timing</h3>
+<p>Using standard host-side timers (such as C++
+<code>std::chrono</code>) requires forcing host-device synchronization
+using <code>clFinish</code> before and after command dispatch. This
+pipeline flushing disrupts asynchronous overlapping, masks concurrent
+execution, and artificially inflates measured runtimes with driver
+overhead and PCIe communication lag. Event objects record timestamps
+directly inside the device driver and hardware execution pipelines,
+ensuring high-resolution, non-intrusive timing that reflects true device
+performance.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

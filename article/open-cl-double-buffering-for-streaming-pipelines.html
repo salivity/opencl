@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Double Buffering for Streaming Pipelines - opencl</title>
+    <meta name="description" content="Double-buffering in OpenCL is a vital design pattern for streaming data pipelines that maximizes hardware throughput by hiding PCIe memory transfer latencies. By maintaining two sets of memory allocations and overlapping data transfers with kernel execut">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-double-buffering-for-streaming-pipelines">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Double Buffering for Streaming Pipelines - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-double-buffering-for-streaming-pipelines" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Double-buffering in OpenCL is a vital design pattern for streaming data pipelines that maximizes hardware throughput by hiding PCIe memory transfer latencies. By maintaining two sets of memory allocations and overlapping data transfers with kernel execut" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-double-buffering-for-streaming-pipelines">OpenCL Double
+Buffering for Streaming Pipelines</h1>
+<p>Double-buffering in OpenCL is a vital design pattern for streaming
+data pipelines that maximizes hardware throughput by hiding PCIe memory
+transfer latencies. By maintaining two sets of memory allocations and
+overlapping data transfers with kernel execution, the host and compute
+device can operate simultaneously rather than sequentially. This article
+outlines the recommended architecture, queue structures, and event-based
+synchronization required to build an efficient double-buffering pipeline
+in OpenCL.</p>
+<h3 id="architecture-overview">Architecture Overview</h3>
+<p>The standard approach uses two distinct sets of memory buffers
+(Buffer Set A and Buffer Set B) and separates operations into compute
+tasks and memory transfer tasks. While the compute device executes a
+kernel on Buffer Set A, the host concurrently transfers the next batch
+of input data into Buffer Set B and reads the previous results from
+Buffer Set A back to host memory.</p>
+<p>To enable this overlap, the recommended design pattern employs
+<strong>two separate in-order command queues</strong> (or alternatively,
+a single out-of-order queue, though multiple in-order queues offer
+greater portability across diverse OpenCL runtimes):</p>
+<ol type="1">
+<li><strong>Transfer Queue (<code>queue_transfer</code>):</strong>
+Dedicated to host-to-device (<code>clEnqueueWriteBuffer</code>) and
+device-to-host (<code>clEnqueueReadBuffer</code>) memory
+operations.</li>
+<li><strong>Compute Queue (<code>queue_compute</code>):</strong>
+Dedicated to kernel dispatch (<code>clEnqueueNDRangeKernel</code>).</li>
+</ol>
+<h3 id="synchronization-with-opencl-events">Synchronization with OpenCL
+Events</h3>
+<p>Because the queues operate asynchronously, synchronization between
+the transfer and compute stages must be managed using OpenCL events
+(<code>cl_event</code>).</p>
+<p>For each iteration <span class="math inline">\(i\)</span>:</p>
+<ol type="1">
+<li><strong>Input Transfer:</strong> <code>clEnqueueWriteBuffer</code>
+is enqueued into <code>queue_transfer</code> targeting the current input
+buffer, generating an <code>event_write</code>.</li>
+<li><strong>Kernel Execution:</strong>
+<code>clEnqueueNDRangeKernel</code> is enqueued into
+<code>queue_compute</code>. It is passed <code>event_write</code> in its
+event wait list so that execution begins only after the transfer
+completes. This yields an <code>event_kernel</code>.</li>
+<li><strong>Output Transfer:</strong> <code>clEnqueueReadBuffer</code>
+is enqueued into <code>queue_transfer</code>. It is passed
+<code>event_kernel</code> in its event wait list to guarantee that the
+kernel has finished writing output data before the transfer to the host
+begins.</li>
+</ol>
+<h3 id="the-streaming-loop-structure">The Streaming Loop Structure</h3>
+<p>The double-buffering execution loop alternates between the two buffer
+sets:</p>
+<pre class="text"><code>Iteration N:
+- Queue_Transfer: Read Output (N-1 from Set B) [waits on Kernel N-1]
+- Queue_Transfer: Write Input (N+1 to Set B)
+- Queue_Compute:  Execute Kernel (N on Set A)   [waits on Write N]
+
+Iteration N+1:
+- Queue_Transfer: Read Output (N from Set A)   [waits on Kernel N]
+- Queue_Transfer: Write Input (N+2 to Set A)
+- Queue_Compute:  Execute Kernel (N+1 on Set B) [waits on Write N+1]</code></pre>
+<p>Before entering the loop, an initial write is enqueued to prime the
+pipeline (prologue). Inside the loop, events from the previous iteration
+must be tracked and passed to the wait lists of the current iteration.
+After the final data chunk is processed, remaining outputs are read
+back, and the pipeline drains (epilogue).</p>
+<h3 id="pinned-memory-optimization">Pinned Memory Optimization</h3>
+<p>To achieve true asynchronous memory transfers and saturate PCIe
+bandwidth, standard host-allocated buffers should be replaced with
+<strong>pinned host memory</strong>.</p>
+<p>Create OpenCL buffers using the <code>CL_MEM_ALLOC_HOST_PTR</code>
+flag, or map page-locked memory directly using
+<code>clEnqueueMapBuffer</code>. Non-pinned memory typically requires
+the OpenCL driver to copy data into an intermediate pinned buffer before
+initiating direct memory access (DMA), which introduces CPU overhead and
+can prevent transfers from running concurrently with compute
+workloads.</p>
+<h3 id="cleanup-and-resource-reuse">Cleanup and Resource Reuse</h3>
+<p>Reusing <code>cl_event</code> objects without proper lifecycle
+management causes memory leaks. Ensure that every event generated by
+transfers or kernel launches is released via <code>clReleaseEvent</code>
+once its corresponding dependent operations have been enqueued and the
+event is no longer needed in subsequent wait lists.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

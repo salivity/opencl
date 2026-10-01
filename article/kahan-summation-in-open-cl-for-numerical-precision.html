@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kahan Summation in OpenCL for Numerical Precision - opencl</title>
+    <meta name="description" content="This article explores how to implement the Kahan summation algorithm in OpenCL to mitigate floating-point rounding errors during parallel reductions. You will learn the mechanics of the Kahan compensation technique, how to structure parallel OpenCL kerne">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/kahan-summation-in-open-cl-for-numerical-precision">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Kahan Summation in OpenCL for Numerical Precision - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/kahan-summation-in-open-cl-for-numerical-precision" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explores how to implement the Kahan summation algorithm in OpenCL to mitigate floating-point rounding errors during parallel reductions. You will learn the mechanics of the Kahan compensation technique, how to structure parallel OpenCL kerne" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="kahan-summation-in-opencl-for-numerical-precision">Kahan
+Summation in OpenCL for Numerical Precision</h1>
+<p>This article explores how to implement the Kahan summation algorithm
+in OpenCL to mitigate floating-point rounding errors during parallel
+reductions. You will learn the mechanics of the Kahan compensation
+technique, how to structure parallel OpenCL kernels to maintain
+numerical accuracy across work-items and work-groups, and critical
+compiler considerations required to prevent hardware optimizations from
+breaking error-tracking routines.</p>
+<h3
+id="the-problem-of-floating-point-accumulation-in-parallel-reductions">The
+Problem of Floating-Point Accumulation in Parallel Reductions</h3>
+<p>Standard 32-bit floating-point arithmetic (<code>float</code>)
+possesses 24 bits of significand precision (roughly 7 decimal digits).
+When performing large-scale summations across millions of elements,
+repeatedly adding small values to an increasingly large accumulator
+leads to catastrophic cancellation: low-order bits shift off the
+significand edge and are permanently discarded.</p>
+<p>In parallel frameworks like OpenCL, this problem is exacerbated.
+Summation is typically executed as a tree-based parallel reduction.
+Because floating-point addition is non-associative, reordering
+operations alters the final outcome. Simply parallelizing the operations
+without precision safeguards causes non-deterministic drift and
+accumulated rounding error.</p>
+<h3 id="the-kahan-summation-algorithm">The Kahan Summation
+Algorithm</h3>
+<p>The Kahan summation algorithm introduces a running compensation
+variable to store the low-order bits that fall outside the accumulator's
+precision window:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> sum <span class="op">=</span> <span class="fl">0.0</span><span class="bu">f</span><span class="op">;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> c <span class="op">=</span> <span class="fl">0.0</span><span class="bu">f</span><span class="op">;</span> <span class="co">// Running compensation for lost low-order bits</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span><span class="dt">int</span> i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span> i <span class="op">&lt;</span> N<span class="op">;</span> i<span class="op">++)</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> y <span class="op">=</span> input<span class="op">[</span>i<span class="op">]</span> <span class="op">-</span> c<span class="op">;</span>     <span class="co">// Subtract the previous error</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> t <span class="op">=</span> sum <span class="op">+</span> y<span class="op">;</span>          <span class="co">// Add to accumulator (precision may be lost here)</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    c <span class="op">=</span> <span class="op">(</span>t <span class="op">-</span> sum<span class="op">)</span> <span class="op">-</span> y<span class="op">;</span>          <span class="co">// Recover the low-order bits of y that were lost</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    sum <span class="op">=</span> t<span class="op">;</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The operation <code>(t - sum)</code> recovers the high-order bits of
+<code>y</code> that were successfully absorbed into <code>sum</code>.
+Subtracting <code>y</code> from that difference yields the negative of
+the lost fraction, which is fed back into the next iteration.</p>
+<h3 id="parallel-implementation-strategy-in-opencl">Parallel
+Implementation Strategy in OpenCL</h3>
+<p>A direct parallelization of Kahan summation cannot rely on a single
+shared compensation variable because atomic floating-point operations do
+not support compensated logic. Instead, a two-phase reduction is
+utilized:</p>
+<ol type="1">
+<li><strong>Per-Thread Serial Kahan Accumulation:</strong> Each
+work-item iterates through a strided or contiguous block of the global
+input array, maintaining its own private <code>sum</code> and
+compensation <code>c</code>.</li>
+<li><strong>Work-Group Parallel Reduction:</strong> The resulting pairs
+<code>(sum, c)</code> must be combined. Because combining two Kahan
+pairs requires tracking the compensation of both operands, a pair-wise
+compensated summation (such as the TwoSum or Neumaier variant) is used
+in local memory.</li>
+</ol>
+<h3 id="opencl-kernel-implementation">OpenCL Kernel Implementation</h3>
+<p>The following kernel demonstrates per-thread Kahan accumulation
+followed by a tree-based reduction in local memory:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">typedef</span> <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> sum<span class="op">;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> c<span class="op">;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> KahanAccumulator<span class="op">;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="kw">inline</span> KahanAccumulator kahan_add<span class="op">(</span>KahanAccumulator acc<span class="op">,</span> <span class="dt">float</span> value<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> y <span class="op">=</span> value <span class="op">-</span> acc<span class="op">.</span>c<span class="op">;</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> t <span class="op">=</span> acc<span class="op">.</span>sum <span class="op">+</span> y<span class="op">;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    acc<span class="op">.</span>c <span class="op">=</span> <span class="op">(</span>t <span class="op">-</span> acc<span class="op">.</span>sum<span class="op">)</span> <span class="op">-</span> y<span class="op">;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    acc<span class="op">.</span>sum <span class="op">=</span> t<span class="op">;</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> acc<span class="op">;</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="co">// Combines two Kahan accumulators accurately using Neumaier&#39;s modification</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="kw">inline</span> KahanAccumulator combine_accumulators<span class="op">(</span>KahanAccumulator a<span class="op">,</span> KahanAccumulator b<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    KahanAccumulator result<span class="op">;</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> t <span class="op">=</span> a<span class="op">.</span>sum <span class="op">+</span> b<span class="op">.</span>sum<span class="op">;</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>fabs<span class="op">(</span>a<span class="op">.</span>sum<span class="op">)</span> <span class="op">&gt;=</span> fabs<span class="op">(</span>b<span class="op">.</span>sum<span class="op">))</span> <span class="op">{</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>        result<span class="op">.</span>c <span class="op">=</span> <span class="op">(</span>a<span class="op">.</span>sum <span class="op">-</span> t<span class="op">)</span> <span class="op">+</span> b<span class="op">.</span>sum<span class="op">;</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>        result<span class="op">.</span>c <span class="op">=</span> <span class="op">(</span>b<span class="op">.</span>sum <span class="op">-</span> t<span class="op">)</span> <span class="op">+</span> a<span class="op">.</span>sum<span class="op">;</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    result<span class="op">.</span>c <span class="op">+=</span> <span class="op">(</span>a<span class="op">.</span>c <span class="op">+</span> b<span class="op">.</span>c<span class="op">);</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>    result<span class="op">.</span>sum <span class="op">=</span> t <span class="op">+</span> result<span class="op">.</span>c<span class="op">;</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>    result<span class="op">.</span>c <span class="op">=</span> <span class="op">(</span>t <span class="op">-</span> result<span class="op">.</span>sum<span class="op">)</span> <span class="op">+</span> result<span class="op">.</span>c<span class="op">;</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> result<span class="op">;</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> kahan_reduction_kernel<span class="op">(</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>    __global <span class="dt">const</span> <span class="dt">float</span><span class="op">*</span> input<span class="op">,</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>    __global <span class="dt">float</span><span class="op">*</span> output<span class="op">,</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>    __local KahanAccumulator<span class="op">*</span> local_scratch<span class="op">,</span></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> <span class="dt">unsigned</span> <span class="dt">int</span> n<span class="op">)</span></span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>    <span class="dt">unsigned</span> <span class="dt">int</span> gid <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a>    <span class="dt">unsigned</span> <span class="dt">int</span> lid <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>    <span class="dt">unsigned</span> <span class="dt">int</span> group_size <span class="op">=</span> get_local_size<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a>    <span class="dt">unsigned</span> <span class="dt">int</span> global_stride <span class="op">=</span> get_global_size<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Step 1: Thread-local sequential accumulation</span></span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>    KahanAccumulator local_acc <span class="op">=</span> <span class="op">{</span><span class="fl">0.0</span><span class="bu">f</span><span class="op">,</span> <span class="fl">0.0</span><span class="bu">f</span><span class="op">};</span></span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">(</span><span class="dt">unsigned</span> <span class="dt">int</span> i <span class="op">=</span> gid<span class="op">;</span> i <span class="op">&lt;</span> n<span class="op">;</span> i <span class="op">+=</span> global_stride<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a>        local_acc <span class="op">=</span> kahan_add<span class="op">(</span>local_acc<span class="op">,</span> input<span class="op">[</span>i<span class="op">]);</span></span>
+<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a>    local_scratch<span class="op">[</span>lid<span class="op">]</span> <span class="op">=</span> local_acc<span class="op">;</span></span>
+<span id="cb2-47"><a href="#cb2-47" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb2-48"><a href="#cb2-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-49"><a href="#cb2-49" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Step 2: Work-group tree reduction in local memory</span></span>
+<span id="cb2-50"><a href="#cb2-50" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">(</span><span class="dt">unsigned</span> <span class="dt">int</span> stride <span class="op">=</span> group_size <span class="op">/</span> <span class="dv">2</span><span class="op">;</span> stride <span class="op">&gt;</span> <span class="dv">0</span><span class="op">;</span> stride <span class="op">&gt;&gt;=</span> <span class="dv">1</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-51"><a href="#cb2-51" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="op">(</span>lid <span class="op">&lt;</span> stride<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-52"><a href="#cb2-52" aria-hidden="true" tabindex="-1"></a>            local_scratch<span class="op">[</span>lid<span class="op">]</span> <span class="op">=</span> combine_accumulators<span class="op">(</span>local_scratch<span class="op">[</span>lid<span class="op">],</span> local_scratch<span class="op">[</span>lid <span class="op">+</span> stride<span class="op">]);</span></span>
+<span id="cb2-53"><a href="#cb2-53" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb2-54"><a href="#cb2-54" aria-hidden="true" tabindex="-1"></a>        barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb2-55"><a href="#cb2-55" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-56"><a href="#cb2-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-57"><a href="#cb2-57" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Step 3: Write out work-group result</span></span>
+<span id="cb2-58"><a href="#cb2-58" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>lid <span class="op">==</span> <span class="dv">0</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-59"><a href="#cb2-59" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Output final sum combined with its remaining error term</span></span>
+<span id="cb2-60"><a href="#cb2-60" aria-hidden="true" tabindex="-1"></a>        output<span class="op">[</span>get_group_id<span class="op">(</span><span class="dv">0</span><span class="op">)]</span> <span class="op">=</span> local_scratch<span class="op">[</span><span class="dv">0</span><span class="op">].</span>sum <span class="op">+</span> local_scratch<span class="op">[</span><span class="dv">0</span><span class="op">].</span>c<span class="op">;</span></span>
+<span id="cb2-61"><a href="#cb2-61" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-62"><a href="#cb2-62" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="compiler-optimization-constraints">Compiler Optimization
+Constraints</h3>
+<p>The most common failure point when implementing Kahan summation in
+OpenCL is compiler-driven algebraic reassociation.</p>
+<p>Under pure algebraic rules, the expression <code>(t - sum) - y</code>
+evaluates to zero because <code>t = sum + y</code>. An optimizing
+compiler treating floating-point arithmetic as associative will collapse
+the error recovery step:</p>
+<p><span class="math display">\[(sum + y - sum) - y = 0\]</span></p>
+<p>To ensure that the compensation logic is preserved:</p>
+<ol type="1">
+<li><strong>Avoid Aggressive Math Flags:</strong> Do not pass
+<code>-cl-fast-relaxed-math</code>,
+<code>-cl-unsafe-math-optimizations</code>, or
+<code>-cl-mad-enable</code> to <code>clBuildProgram</code>. These flags
+explicitly permit the compiler to assume associativity and eliminate
+rounding error terms.</li>
+<li><strong>Use Volatile Qualifiers if Necessary:</strong> If the
+compiler targets hardware whose low-level compiler optimizes
+intermediate values aggressively despite the absence of fast-math flags,
+declare the compensation variables (<code>c</code> and <code>y</code>)
+as <code>volatile</code> to force evaluation directly to and from
+registers without algebraic simplification.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

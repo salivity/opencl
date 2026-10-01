@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL clEnqueueNDRangeKernel NDRange Explained - opencl</title>
+    <meta name="description" content="In OpenCL, the clEnqueueNDRangeKernel function launches a data-parallel kernel over an N-dimensional index space known as the NDRange. This article breaks down how OpenCL defines this index space through specific API parameters, detailing the roles of di">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-cl-enqueue-nd-range-kernel-nd-range-explained">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL clEnqueueNDRangeKernel NDRange Explained - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-cl-enqueue-nd-range-kernel-nd-range-explained" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, the clEnqueueNDRangeKernel function launches a data-parallel kernel over an N-dimensional index space known as the NDRange. This article breaks down how OpenCL defines this index space through specific API parameters, detailing the roles of di" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-clenqueuendrangekernel-ndrange-explained">OpenCL
+clEnqueueNDRangeKernel NDRange Explained</h1>
+<p>In OpenCL, the <code>clEnqueueNDRangeKernel</code> function launches
+a data-parallel kernel over an N-dimensional index space known as the
+NDRange. This article breaks down how OpenCL defines this index space
+through specific API parameters, detailing the roles of dimensionality,
+global execution sizes, local work-group partitioning, and global
+offsets. Understanding these parameters is essential for effectively
+mapping parallel computations onto the physical processing cores of an
+OpenCL device.</p>
+<h3 id="the-ndrange-concept">The NDRange Concept</h3>
+<p>The NDRange represents an abstract, N-dimensional grid of independent
+computational units called work-items. Each work-item executes an
+instance of the kernel function. In <code>clEnqueueNDRangeKernel</code>,
+the structure and boundary of this grid are governed by four tightly
+coupled parameters: <code>work_dim</code>,
+<code>global_work_offset</code>, <code>global_work_size</code>, and
+<code>local_work_size</code>.</p>
+<h3 id="1-dimensionality-work_dim">1. Dimensionality:
+<code>work_dim</code></h3>
+<p>The <code>work_dim</code> parameter is an unsigned integer
+(<code>cl_uint</code>) specifying the number of dimensions used to
+describe the work-items in the NDRange.</p>
+<ul>
+<li>OpenCL supports values of <strong>1</strong>, <strong>2</strong>, or
+<strong>3</strong>.</li>
+<li>A 1D range is typically used for linear data structures like
+vectors.</li>
+<li>A 2D range is commonly mapped to matrix operations or image
+processing.</li>
+<li>A 3D range is suited for volumetric data, 3D simulations, or
+multi-dimensional tensors.</li>
+</ul>
+<p>The value of <code>work_dim</code> dictates the required array length
+for the subsequent size and offset parameters.</p>
+<h3 id="2-global-problem-size-global_work_size">2. Global Problem Size:
+<code>global_work_size</code></h3>
+<p>The <code>global_work_size</code> parameter is a pointer to an array
+of <code>work_dim</code> unsigned values (<code>size_t</code>). It
+defines the total number of work-items that will execute the kernel
+across each dimension.</p>
+<p>For example, in a 2D image processing task on a 1920x1080 image,
+<code>work_dim</code> is 2, and <code>global_work_size</code> would be
+defined as an array containing <code>{1920, 1080}</code>. The total
+number of kernel invocations is the product of the values in this array
+(<span class="math inline">\(1920 \times 1080 = 2,073,600\)</span>
+work-items). Within the kernel, each item queries its global coordinate
+using the built-in function <code>get_global_id(dimension)</code>.</p>
+<h3 id="3-work-group-division-local_work_size">3. Work-Group Division:
+<code>local_work_size</code></h3>
+<p>The <code>local_work_size</code> parameter is also a pointer to an
+array of <code>work_dim</code> unsigned values (<code>size_t</code>). It
+specifies how the global index space is partitioned into smaller,
+cooperative clusters called work-groups.</p>
+<ul>
+<li><strong>Explicit Partitioning:</strong> If provided, work-items
+within the same work-group execute concurrently on the same compute
+unit, allowing them to share local memory (<code>__local</code>) and
+synchronize execution via barriers
+(<code>barrier(CLK_LOCAL_MEM_FENCE)</code>).</li>
+<li><strong>Automatic Partitioning:</strong> If
+<code>local_work_size</code> is passed as <code>NULL</code>, the OpenCL
+runtime automatically decides the optimal work-group dimensions based on
+device capabilities and hardware architecture.</li>
+<li><strong>Divisibility Constraint:</strong> In OpenCL 1.x, each
+dimension's <code>global_work_size</code> must be an exact integer
+multiple of its corresponding <code>local_work_size</code>. OpenCL 2.0
+introduced non-uniform work-groups, allowing residual work-items to run
+without padding, though uniform sizes often remain preferred for maximum
+performance.</li>
+</ul>
+<p>Inside the kernel, items identify their position within their
+specific group using <code>get_local_id(dimension)</code> and query the
+group's global coordinate using
+<code>get_group_id(dimension)</code>.</p>
+<h3 id="4-global-offset-global_work_offset">4. Global Offset:
+<code>global_work_offset</code></h3>
+<p>The <code>global_work_offset</code> parameter is a pointer to an
+array of <code>work_dim</code> values (<code>size_t</code>) used to
+shift the global ID starting values.</p>
+<ul>
+<li>If set to <code>NULL</code>, the global IDs in each dimension start
+at <strong>0</strong>.</li>
+<li>If non-null, work-item global IDs start at the offset value rather
+than 0. For instance, an offset of <code>{100}</code> in a 1D range with
+a size of <code>{50}</code> assigns global IDs ranging from 100 to
+149.</li>
+<li>Regardless of the global offset, <code>get_local_id()</code> always
+begins at 0 within each work-group.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimizing OpenCL SpMV Memory Layouts - opencl</title>
+    <meta name="description" content="Sparse matrix-vector multiplication (SpMV) is a foundational computational kernel across scientific computing, graph processing, and machine learning, yet its throughput on parallel architectures is routinely bounded by memory bandwidth rather than raw c">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/optimizing-open-cl-sp-mv-memory-layouts">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Optimizing OpenCL SpMV Memory Layouts - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/optimizing-open-cl-sp-mv-memory-layouts" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Sparse matrix-vector multiplication (SpMV) is a foundational computational kernel across scientific computing, graph processing, and machine learning, yet its throughput on parallel architectures is routinely bounded by memory bandwidth rather than raw c" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="optimizing-opencl-spmv-memory-layouts">Optimizing OpenCL SpMV
+Memory Layouts</h1>
+<p>Sparse matrix-vector multiplication (SpMV) is a foundational
+computational kernel across scientific computing, graph processing, and
+machine learning, yet its throughput on parallel architectures is
+routinely bounded by memory bandwidth rather than raw compute capacity.
+This article examines the critical factors governing the selection and
+design of sparse matrix storage formats for OpenCL implementations. It
+highlights how memory access coalescing, workload balancing, indirect
+memory indexing, warp divergence, and heterogeneous hardware
+architectures dictate the optimal memory layout for SpMV operations.</p>
+<h3 id="coalesced-global-memory-access">Coalesced Global Memory
+Access</h3>
+<p>In OpenCL architectures, maximizing memory throughput on massively
+parallel devices like GPUs requires memory access coalescing. When
+consecutive work-items in a work-group request data from contiguous
+addresses in global memory, the memory controller can combine these
+requests into a single memory transaction.</p>
+<p>Traditional layouts like Compressed Sparse Row (CSR) naturally map
+one work-item to one matrix row. However, because consecutive work-items
+read row elements at distinct memory offsets, this mapping generates
+scattered, uncoalesced memory reads. To achieve coalesced access,
+layouts such as ELLPACK (ELL) or Jagged Diagonal Storage (JDS) store
+matrix elements in column-major order. By aligning the first non-zero
+element of each row contiguously, work-items indexed sequentially access
+sequential memory locations, drastically reducing the total number of
+memory transactions issued to the global memory bus.</p>
+<h3 id="workload-balancing-and-row-length-variance">Workload Balancing
+and Row-Length Variance</h3>
+<p>Matrices derived from real-world applications (such as social
+networks or web graphs) often exhibit power-law distributions, where a
+small subset of rows contains the vast majority of non-zero elements.
+Memory layout choices directly dictate how workload is distributed among
+OpenCL compute units.</p>
+<ul>
+<li><strong>Uniform Formats (ELLPACK):</strong> Allocate space based on
+the maximum row length (<span class="math inline">\(N_{max}\)</span>)
+across the entire matrix. While regular and easy to parallelize, high
+variance in row lengths leads to excessive zero-padding, which wastes
+memory bandwidth and storage.</li>
+<li><strong>Hybrid Formats (HYB):</strong> Split the matrix into two
+parts: an ELLPACK portion handling non-zeros up to a designated
+threshold, and a Coordinate (COO) format storing the remaining irregular
+elements. This bounds the padding overhead while maintaining coalesced
+access for the dense core.</li>
+<li><strong>Adaptive Formats (CSR-Adaptive / Merge-Path):</strong>
+Retain the compact storage of CSR but assign variable numbers of
+work-items or entire work-groups to longer rows, dynamically balancing
+the computational load across the device.</li>
+</ul>
+<h3 id="indirect-addressing-and-dense-vector-access">Indirect Addressing
+and Dense Vector Access</h3>
+<p>In the operation <span class="math inline">\(y = Ax\)</span>, reading
+the non-zero elements and column indices of matrix <span
+class="math inline">\(A\)</span> follows a predictable stream, but
+referencing the corresponding entries in the dense input vector <span
+class="math inline">\(x\)</span> requires indirect addressing
+(<code>x[col_idx[i]]</code>).</p>
+<p>Because column indices vary wildly in unstructured matrices, access
+to vector <span class="math inline">\(x\)</span> lacks spatial locality
+and often bypasses the benefits of memory coalescing. Memory layouts
+must mitigate this through the following strategies:</p>
+<ul>
+<li><strong>Blocking Techniques (BCSR):</strong> Block Compressed Sparse
+Row groups adjacent non-zeros into small, dense sub-blocks (e.g., <span
+class="math inline">\(2 \times 2\)</span> or <span
+class="math inline">\(4 \times 4\)</span>). This amortizes the cost of
+column index storage and ensures that a single index lookup loads a
+localized cluster of elements from vector <span
+class="math inline">\(x\)</span>.</li>
+<li><strong>Local Memory Caching:</strong> Work-groups can stage
+frequently accessed segments of vector <span
+class="math inline">\(x\)</span> into OpenCL <code>__local</code> memory
+(scratchpad memory). Formats must reorder rows or cluster bands of
+columns to ensure that all non-zero entries processed by a work-group
+reference an identifiable subset of <span
+class="math inline">\(x\)</span> that fits entirely within the limited
+local memory allocation.</li>
+</ul>
+<h3 id="branch-and-control-divergence">Branch and Control
+Divergence</h3>
+<p>OpenCL work-items are executed in lockstep groups (known as
+wavefronts on AMD hardware or warps on NVIDIA hardware). If work-items
+within the same SIMD execution unit process rows containing different
+numbers of non-zero entries, the entire unit stalls while waiting for
+the longest thread to complete its loop.</p>
+<p>Layouts such as Sliced ELLPACK or SELL-C-<span
+class="math inline">\(\sigma\)</span> address this issue. SELL-C-<span
+class="math inline">\(\sigma\)</span> first sorts rows within a defined
+scope (<span class="math inline">\(\sigma\)</span>) by their non-zero
+counts to group rows of similar lengths, then slices the matrix into
+chunks of size <span class="math inline">\(C\)</span> (typically
+matching the hardware wavefront size). This eliminates branch divergence
+within the wavefront, bounds zero-padding locally rather than globally,
+and keeps memory access coalesced.</p>
+<h3 id="target-hardware-architecture">Target Hardware Architecture</h3>
+<p>OpenCL provides cross-platform execution, but optimal memory layouts
+vary across device architectures:</p>
+<ul>
+<li><strong>Discrete GPUs:</strong> Heavily penalize uncoalesced access
+and control divergence, favoring ELLPACK variants, SELL-C-<span
+class="math inline">\(\sigma\)</span>, or vector-CSR approaches.</li>
+<li><strong>Multi-Core CPUs:</strong> Benefit from deep cache
+hierarchies and wide vector instruction sets (e.g., AVX-512). Compact
+layouts like classic CSR or BCSR perform well here because CPU hardware
+prefetchers handle sequential row access efficiently without requiring
+strict thread-level coalescing.</li>
+<li><strong>FPGAs:</strong> OpenCL on FPGAs thrives on streaming
+architectures. Layouts that permit continuous, pipelined data
+access—such as streaming COO or interleaved block formats—allow
+developers to construct deeply pipelined datapaths with minimal
+stalls.</li>
+</ul>
+<p>The performance of SpMV in OpenCL is dictated by how well the chosen
+memory layout harmonizes the structural sparsity of the matrix with the
+underlying hardware's execution and memory subsystems.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

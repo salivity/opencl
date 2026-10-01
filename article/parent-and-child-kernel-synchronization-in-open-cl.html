@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parent and Child Kernel Synchronization in OpenCL - opencl</title>
+    <meta name="description" content="This article explains the synchronization semantics governing parent and child kernels in OpenCL 2.0 and later, where device-side enqueue allows kernels to spawn subsequent work directly on the device. It covers the lifecycle dependencies between parent">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/parent-and-child-kernel-synchronization-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Parent and Child Kernel Synchronization in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/parent-and-child-kernel-synchronization-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explains the synchronization semantics governing parent and child kernels in OpenCL 2.0 and later, where device-side enqueue allows kernels to spawn subsequent work directly on the device. It covers the lifecycle dependencies between parent" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="parent-and-child-kernel-synchronization-in-opencl">Parent and
+Child Kernel Synchronization in OpenCL</h1>
+<p>This article explains the synchronization semantics governing parent
+and child kernels in OpenCL 2.0 and later, where device-side enqueue
+allows kernels to spawn subsequent work directly on the device. It
+covers the lifecycle dependencies between parent and child executions,
+event-based ordering controls, and the memory visibility guarantees
+required to prevent data races and ensure deterministic execution.</p>
+<h3 id="parent-kernel-completion-dependency">Parent Kernel Completion
+Dependency</h3>
+<p>In OpenCL device-side enqueue, a parent kernel cannot reach a
+completed state until all of its child kernels—and any nested descendant
+kernels—have fully finished execution. Even if all work-items of the
+parent kernel execute their final instructions, the parent kernel
+execution status remains active on the host and the device queue until
+every child kernel enqueued by any of its work-groups has finished.
+Consequently, any host-side event waiting on the parent kernel will only
+trigger once the entire tree of descendant kernels is complete.</p>
+<h3 id="execution-ordering-and-child-launching">Execution Ordering and
+Child Launching</h3>
+<p>Child kernels do not automatically execute in the order they are
+enqueued unless explicit constraints are provided:</p>
+<ul>
+<li><strong>Asynchronous Launch:</strong> By default, child kernels are
+enqueued asynchronously. A child kernel can begin execution while the
+parent kernel is still running, provided device execution resources are
+available.</li>
+<li><strong>Out-of-Order Execution:</strong> Device queues are
+out-of-order queues by default. If a parent issues multiple child
+kernels without specifying dependencies, they may run concurrently or in
+an arbitrary order.</li>
+<li><strong>Event Wait Lists (<code>clk_event_t</code>):</strong> To
+enforce sequential or ordered execution among child kernels, developers
+use device-side events. A child kernel can accept an event wait list,
+preventing it from executing until the specified predecessor child
+kernels have signaled completion.</li>
+</ul>
+<h3 id="enqueue-flags-and-scope">Enqueue Flags and Scope</h3>
+<p>When invoking <code>enqueue_kernel</code>, synchronization behavior
+can also be dictated using execution flags:</p>
+<ul>
+<li><code>CLK_ENQUEUE_FLAGS_NO_WAIT</code>: The child kernel begins
+execution without waiting on the parent kernel or work-group, subject
+only to its event wait list.</li>
+<li><code>CLK_ENQUEUE_FLAGS_WAIT_WORK_GROUP</code>: The child kernel
+does not execute until all work-items in the enqueuing work-group reach
+the enqueue point or a specified synchronization barrier.</li>
+<li><code>CLK_ENQUEUE_FLAGS_WAIT_KERNEL</code>: The child kernel is
+deferred until the parent kernel execution finishes completely, running
+effectively as a post-parent continuation task.</li>
+</ul>
+<h3 id="memory-consistency-and-visibility-semantics">Memory Consistency
+and Visibility Semantics</h3>
+<p>Synchronization between parent and child kernels relies on explicit
+memory consistency rules defined by the OpenCL memory model:</p>
+<ol type="1">
+<li><strong>Parent-to-Child Visibility:</strong> When a parent kernel
+enqueues a child kernel, there is an implicit release operation on
+global memory. When the child kernel begins execution, it performs an
+implicit acquire operation. This guarantees that all global memory
+writes performed by the enqueuing parent work-item prior to the
+<code>enqueue_kernel</code> call are visible to the child kernel.</li>
+<li><strong>Child-to-Child Visibility:</strong> When a child kernel
+depends on another child kernel via a device event
+(<code>clk_event_t</code>), completion of the preceding child acts as a
+release, and the start of the dependent child acts as an acquire. All
+global memory updates made by the first child are guaranteed visible to
+the subsequent child.</li>
+<li><strong>Child-to-Parent Visibility:</strong> Because a parent kernel
+cannot wait synchronously on a child kernel within the execution of a
+single work-item (OpenCL does not support blocking wait calls on device
+events inside a work-item), a parent generally cannot read data written
+by its own child kernel during its active execution. Instead,
+child-to-parent data flow occurs across kernel boundaries—such as when a
+parent completes and a subsequent host-side or deferred task reads the
+combined outputs.</li>
+<li><strong>Local Memory Isolation:</strong> Local memory is private to
+the work-group that allocates it. A parent cannot share its work-group
+local memory directly with a child kernel. Instead, child kernels must
+be provisioned with their own local memory allocations passed as
+arguments during the enqueue call.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

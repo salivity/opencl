@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL 2.0 Concurrent Read-Write Image Access - opencl</title>
+    <meta name="description" content="OpenCL 2.0 fundamentally modernized heterogeneous computing by introducing native read-write image qualifiers, replacing the rigid read-only and write-only constraints of earlier specifications. This article explains how OpenCL 2.0 relaxes restrictions o">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-2-0-concurrent-read-write-image-access">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL 2.0 Concurrent Read-Write Image Access - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-2-0-concurrent-read-write-image-access" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL 2.0 fundamentally modernized heterogeneous computing by introducing native read-write image qualifiers, replacing the rigid read-only and write-only constraints of earlier specifications. This article explains how OpenCL 2.0 relaxes restrictions o" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-20-concurrent-read-write-image-access">OpenCL 2.0
+Concurrent Read-Write Image Access</h1>
+<p>OpenCL 2.0 fundamentally modernized heterogeneous computing by
+introducing native read-write image qualifiers, replacing the rigid
+read-only and write-only constraints of earlier specifications. This
+article explains how OpenCL 2.0 relaxes restrictions on simultaneous
+read-write access to identical image regions, detailing the
+architectural shift, memory consistency rules, and synchronization
+mechanisms required to safely manage concurrent operations on identical
+coordinates.</p>
+<p>Prior to OpenCL 2.0, image objects in a kernel could only be
+qualified as <code>__read_only</code> or <code>__write_only</code>. If
+an algorithm required reading from an image and writing modified values
+back to the same image (such as in iterative stencil computations or
+in-place image processing), developers were forced to implement a
+"ping-pong" buffering strategy. This involved allocating two identical
+images in device memory and swapping their read and write roles between
+subsequent kernel launches, incurring substantial memory and bandwidth
+overhead.</p>
+<p>OpenCL 2.0 eliminates this limitation by introducing the
+<code>read_write</code> (or <code>__read_write</code>) access qualifier
+for image types. A kernel can now declare an image argument with
+read-write permissions, allowing work-items to both sample from and
+write to the same underlying image resource using built-in functions
+like <code>read_imagef</code> and <code>write_imagef</code>.</p>
+<p>While OpenCL 2.0 allows concurrent access to the same image,
+accessing <em>identical</em> pixel or texel regions simultaneously
+introduces potential data hazards, including read-after-write (RAW),
+write-after-read (WAR), and write-after-write (WAW) races. To make
+concurrent access safe and deterministic, OpenCL 2.0 relaxed its
+execution rules by tightly coupling image operations with its redesigned
+memory consistency model, which is based on the C11/C++11 memory
+model.</p>
+<p>Under this model, image operations on identical coordinates are
+governed by explicit synchronization and memory ordering primitives:</p>
+<ol type="1">
+<li><p><strong>Work-Group Barriers and Image Memory Fences:</strong> To
+safely pass data between work-items targeting the same image coordinates
+within a work-group, developers use <code>work_group_barrier</code> with
+the <code>CLK_IMAGE_MEM_FENCE</code> flag. This barrier ensures that all
+preceding writes to the image by any work-item in the work-group are
+flushed and made visible before any subsequent reads from that image are
+executed by other work-items in the same group.</p></li>
+<li><p><strong>Memory Ordering and Scopes:</strong> OpenCL 2.0
+introduces memory scopes (<code>memory_scope_work_group</code>,
+<code>memory_scope_device</code>, and
+<code>memory_scope_all_svm_devices</code>) along with acquire and
+release semantics. When combined with atomic operations or control flags
+in global memory, these scopes define precise visibility boundaries
+across work-groups and compute units, allowing developers to orchestrate
+cross-work-group updates to identical image regions without tearing or
+undefined behavior.</p></li>
+<li><p><strong>Intra-Work-Item Determinism:</strong> For an individual
+work-item operating on its own dedicated coordinate, the relaxed model
+guarantees sequential consistency in program order. A single work-item
+can read a pixel value, compute an update, and write the result back to
+that exact coordinate without requiring intermediate fences or secondary
+memory allocations.</p></li>
+</ol>
+<p>By replacing strict global separation with granular,
+programmer-directed synchronization, OpenCL 2.0 allows concurrent reads
+and writes to identical image regions. This relaxation dramatically
+lowers global memory usage, reduces memory bandwidth saturation, and
+enables complex in-place filtering algorithms to execute directly on the
+GPU.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

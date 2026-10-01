@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Command Queue Execution and Dependencies - opencl</title>
+    <meta name="description" content="OpenCL command queues manage task scheduling and device synchronization by directing commands from the host application to compute devices. Depending on whether a queue is configured for in-order or out-of-order execution, the runtime determines when tas">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-command-queue-execution-and-dependencies">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Command Queue Execution and Dependencies - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-command-queue-execution-and-dependencies" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL command queues manage task scheduling and device synchronization by directing commands from the host application to compute devices. Depending on whether a queue is configured for in-order or out-of-order execution, the runtime determines when tas" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-command-queue-execution-and-dependencies">OpenCL Command
+Queue Execution and Dependencies</h1>
+<p>OpenCL command queues manage task scheduling and device
+synchronization by directing commands from the host application to
+compute devices. Depending on whether a queue is configured for in-order
+or out-of-order execution, the runtime determines when tasks begin,
+while event objects, wait-lists, and synchronization barriers provide
+precise control over data dependencies across single or multiple
+devices.</p>
+<h2 id="queue-execution-modes">Queue Execution Modes</h2>
+<p>When an OpenCL command queue is created, its execution model is
+defined by its properties.</p>
+<ul>
+<li><strong>In-Order Execution:</strong> By default, command queues
+execute commands sequentially. A command will only start execution after
+the preceding command in the queue has completely finished. This ensures
+strict ordering without requiring manual synchronization, making it
+ideal for simple, linear pipelines. However, in-order queues can
+underutilize hardware by preventing the simultaneous execution of
+independent tasks or the overlap of data transfers with compute
+kernels.</li>
+<li><strong>Out-of-Order Execution:</strong> When configured with the
+<code>CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE</code> property, commands
+are dispatched as soon as device resources become available. There is no
+guarantee regarding the order in which commands start or finish. This
+mode maximizes throughput by overlapping kernel executions and
+asynchronous memory operations, but it places the responsibility of
+managing dependencies entirely on the developer.</li>
+</ul>
+<h2 id="dependency-tracking-using-events">Dependency Tracking Using
+Events</h2>
+<p>In out-of-order execution, or when coordinating tasks across multiple
+queues, OpenCL relies on <code>cl_event</code> objects to track
+execution state and resolve dependencies.</p>
+<p>Most OpenCL enqueue functions (such as
+<code>clEnqueueNDRangeKernel</code>, <code>clEnqueueReadBuffer</code>,
+or <code>clEnqueueCopyBuffer</code>) accept two parameters related to
+events:</p>
+<ol type="1">
+<li><strong>An event wait-list (<code>event_wait_list</code>):</strong>
+An array of events that must reach the <code>CL_COMPLETE</code> state
+before the current command can begin execution.</li>
+<li><strong>An output event pointer (<code>event</code>):</strong>
+Returns a handle to a new event representing the newly enqueued
+command.</li>
+</ol>
+<p>When a command is submitted with an event wait-list, the OpenCL
+runtime places the command in a <code>CL_SUBMITTED</code> state. The
+runtime monitors the dependencies, and only when every event in the
+wait-list transitions to <code>CL_COMPLETE</code> does the command
+transition to <code>CL_QUEUED</code> and then
+<code>CL_RUNNING</code>.</p>
+<h2 id="queue-barriers-and-markers">Queue Barriers and Markers</h2>
+<p>OpenCL provides specific enqueue commands to implement
+synchronization points directly within the command stream without
+requiring explicit event arrays on every single operation:</p>
+<ul>
+<li><strong><code>clEnqueueBarrierWithWaitList</code>:</strong> Acts as
+an execution fence. It prevents any subsequently enqueued commands in
+that specific queue from executing until all commands in the barrier's
+event wait-list (or all previously enqueued commands, if no list is
+provided) have fully completed.</li>
+<li><strong><code>clEnqueueMarkerWithWaitList</code>:</strong> Enqueues
+a marker command that does not execute hardware work, but produces an
+event that signals completion once all events in its wait-list have
+completed. This provides a lightweight mechanism to group multiple
+operations into a single completion event.</li>
+</ul>
+<h2 id="cross-queue-and-host-device-synchronization">Cross-Queue and
+Host-Device Synchronization</h2>
+<p>Because <code>cl_event</code> objects belong to an OpenCL context
+rather than a specific queue, they can resolve dependencies across
+different queues and devices. An event generated by a data transfer on a
+copy queue can be placed into the wait-list of a compute kernel on an
+execution queue, enabling cross-queue pipelines.</p>
+<p>For host-side synchronization, the host program can block execution
+until specific events finish using <code>clWaitForEvents</code>.
+Alternatively, non-blocking execution can be maintained using
+<code>clSetEventCallback</code>, which triggers a host function callback
+when an event reaches a specified execution status, such as completion
+or an error state.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

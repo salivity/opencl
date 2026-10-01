@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Work-Group Preemption for Time-Critical OpenCL - opencl</title>
+    <meta name="description" content="Work-group preemption on modern graphics processing units (GPUs) enables the suspension of active compute workloads at the work-group boundary to execute higher-priority tasks, directly resolving the latency and scheduling bottlenecks inherent to traditi">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/gpu-work-group-preemption-for-time-critical-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="GPU Work-Group Preemption for Time-Critical OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/gpu-work-group-preemption-for-time-critical-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Work-group preemption on modern graphics processing units (GPUs) enables the suspension of active compute workloads at the work-group boundary to execute higher-priority tasks, directly resolving the latency and scheduling bottlenecks inherent to traditi" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="gpu-work-group-preemption-for-time-critical-opencl">GPU
+Work-Group Preemption for Time-Critical OpenCL</h1>
+<p>Work-group preemption on modern graphics processing units (GPUs)
+enables the suspension of active compute workloads at the work-group
+boundary to execute higher-priority tasks, directly resolving the
+latency and scheduling bottlenecks inherent to traditional GPU compute.
+In time-critical OpenCL applications—such as autonomous driving,
+real-time robotics, virtual reality, and medical imaging—this mechanism
+prevents low-priority, compute-heavy kernels from monopolizing hardware
+resources. By providing a predictable, fine-grained interruption
+mechanism, work-group preemption ensures deterministic response times,
+reduces scheduling jitter, and facilitates effective multi-tenant
+Quality of Service (QoS) guarantees on shared hardware.</p>
+<h3 id="the-challenge-of-latency-in-gpu-scheduling">The Challenge of
+Latency in GPU Scheduling</h3>
+<p>Historically, GPUs were architected primarily for maximum throughput
+via massively parallel, run-to-completion models. Under this model, once
+a kernel is dispatched to compute units, it occupies registers, local
+memory, and execution pipelines until completion. If an urgent,
+time-critical OpenCL task arrives, it is forced to wait in a hardware
+command queue—a problem known as head-of-line blocking.</p>
+<p>For real-time systems where missing a deadline can result in system
+failure, coarse-grained kernel-level preemption is insufficient. Complex
+compute kernels can take tens or even hundreds of milliseconds to
+finish, introducing intolerable tail latencies. Work-group preemption
+mitigates this issue by shifting the preemption boundary from the entire
+kernel dispatch to the individual work-group level.</p>
+<h3 id="architectural-mechanism-of-work-group-preemption">Architectural
+Mechanism of Work-Group Preemption</h3>
+<p>In OpenCL, a kernel is partitioned into work-groups, which execute
+concurrently across multiple Compute Units (CUs) or Streaming
+Multiprocessors (SMs). Modern GPU microarchitectures implement
+work-group preemption through two primary methods:</p>
+<ol type="1">
+<li><strong>Drain and Discard (Idling):</strong> Rather than forcibly
+tearing down an active work-group mid-instruction, the hardware
+scheduler prevents new work-groups from launching on designated compute
+units. As active work-groups naturally reach completion and retire,
+their resources are reclaimed immediately by the hardware scheduler to
+launch the incoming high-priority OpenCL kernel.</li>
+<li><strong>Context-Save-and-Restore (Eviction):</strong> In more
+aggressive architectures, the state of the active work-group—including
+general-purpose registers (GPRs), program counters, and local data share
+(LDS/scratchpad memory)—is serialized to high-bandwidth global memory or
+dedicated on-chip state buffers. Once the state is evacuated, the
+compute unit context is initialized for the time-critical workload.</li>
+</ol>
+<p>Work-group granularity offers an optimal trade-off between switching
+latency and context-switching overhead. Preemption at the instruction or
+thread level requires vast context-saving hardware resources, while
+work-group boundaries often coincide with barrier synchronizations where
+transient state is minimized.</p>
+<h3 id="preserving-determinism-and-quality-of-service">Preserving
+Determinism and Quality of Service</h3>
+<p>In multi-application environments where mixed-criticality workloads
+run simultaneously, work-group preemption acts as the primary enabler of
+QoS. OpenCL interfaces with this hardware capability via priority
+queues, typically enabled through platform-specific extensions or
+standard priority hints (such as
+<code>cl_khr_priority_hints</code>).</p>
+<p>When a high-priority context submits a kernel:</p>
+<ul>
+<li><strong>Tail Latency Reduction:</strong> The preemption latency
+becomes bounded by the execution duration of a single work-group rather
+than the entire grid.</li>
+<li><strong>Deterministic Execution:</strong> Real-time pipelines can
+establish worst-case execution time (WCET) bounds, which are essential
+for safety-critical algorithmic certifications (such as ISO 26262 in
+automotive software).</li>
+<li><strong>Resource Re-allocation:</strong> The GPU can dynamically
+yield a subset of compute units to a high-priority stream while allowing
+lower-priority compute tasks to trickle through remaining hardware
+lanes, preventing total execution starvation.</li>
+</ul>
+<h3 id="hardware-trade-offs-and-developer-considerations">Hardware
+Trade-offs and Developer Considerations</h3>
+<p>While work-group preemption provides responsive execution, it
+introduces specific hardware costs. Context-save-and-restore approaches
+consume significant memory bandwidth, temporarily stalling other
+memory-bound compute operations during the eviction and restoration
+phases. Additionally, if work-groups are designed to be extremely
+long-running through iterative loops and complex internal barriers, the
+time to reach a clean preemption point can still lead to measurable
+latency spikes.</p>
+<p>Writing time-critical OpenCL code requires designing work-groups with
+small memory footprints and short, uniform execution spans. By aligning
+kernel work-group sizes with the hardware’s native preemption
+boundaries, developers can leverage modern GPU preemption engines to
+achieve near-instantaneous context switching, ensuring that critical
+deadlines are consistently met without sacrificing overall compute
+throughput.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

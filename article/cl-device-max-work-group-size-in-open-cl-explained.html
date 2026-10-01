@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CL_DEVICE_MAX_WORK_GROUP_SIZE in OpenCL Explained - opencl</title>
+    <meta name="description" content="CLDEVICEMAXWORKGROUPSIZE is a fundamental OpenCL query parameter that dictates the maximum number of concurrent work-items a device can accommodate within a single work-group. In OpenCL execution planning, this metric serves as a hard hardware boundary f">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/cl-device-max-work-group-size-in-open-cl-explained">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="CL_DEVICE_MAX_WORK_GROUP_SIZE in OpenCL Explained - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/cl-device-max-work-group-size-in-open-cl-explained" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="CLDEVICEMAXWORKGROUPSIZE is a fundamental OpenCL query parameter that dictates the maximum number of concurrent work-items a device can accommodate within a single work-group. In OpenCL execution planning, this metric serves as a hard hardware boundary f" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1
+id="cl_device_max_work_group_size-in-opencl-explained">CL_DEVICE_MAX_WORK_GROUP_SIZE
+in OpenCL Explained</h1>
+<p><code>CL_DEVICE_MAX_WORK_GROUP_SIZE</code> is a fundamental OpenCL
+query parameter that dictates the maximum number of concurrent
+work-items a device can accommodate within a single work-group. In
+OpenCL execution planning, this metric serves as a hard hardware
+boundary for thread geometry, directly influencing resource allocation,
+hardware occupancy, and cross-platform portability. Understanding and
+properly querying this parameter ensures that compute kernels execute
+efficiently without triggering runtime launch failures.</p>
+<h2 id="hardware-boundary-and-execution-geometry">Hardware Boundary and
+Execution Geometry</h2>
+<p>When dispatching an OpenCL kernel via
+<code>clEnqueueNDRangeKernel</code>, developers specify both global
+work-size (total problem size) and local work-size (the number of
+work-items per work-group). The parameter
+<code>CL_DEVICE_MAX_WORK_GROUP_SIZE</code>, queried using
+<code>clGetDeviceInfo</code>, specifies the absolute upper limit for the
+total number of work-items inside any single work-group on that specific
+device.</p>
+<p>Work-groups in OpenCL can be 1D, 2D, or 3D. Regardless of the
+dimensional distribution, the product of the dimensions (<span
+class="math inline">\(S_x \times S_y \times S_z\)</span>) must never
+exceed <code>CL_DEVICE_MAX_WORK_GROUP_SIZE</code>. Additionally,
+developers must cross-reference this value with
+<code>CL_DEVICE_MAX_WORK_ITEM_SIZES</code>, which imposes individual
+per-axis maximums.</p>
+<h2 id="device-ceiling-vs-kernel-specific-limits">Device Ceiling vs.
+Kernel-Specific Limits</h2>
+<p>A frequent pitfall in OpenCL execution planning is assuming
+<code>CL_DEVICE_MAX_WORK_GROUP_SIZE</code> is the definitive number of
+work-items available for every kernel dispatch. In reality, it
+represents the theoretical hardware maximum.</p>
+<p>The true operational limit for a specific kernel is defined by
+<code>CL_KERNEL_WORK_GROUP_SIZE</code>, queried through
+<code>clGetKernelWorkGroupInfo</code>. This value is determined at
+runtime after the kernel is compiled for the target architecture.
+Compilers dynamically calculate register usage and private memory
+requirements. If a kernel consumes a large number of registers, the
+hardware scheduler must reduce the maximum permissible work-group size
+below <code>CL_DEVICE_MAX_WORK_GROUP_SIZE</code> to fit within physical
+register file constraints. Execution planning must treat
+<code>CL_DEVICE_MAX_WORK_GROUP_SIZE</code> as a ceiling, but rely on
+<code>CL_KERNEL_WORK_GROUP_SIZE</code> for dispatch configuration.</p>
+<h2 id="resource-allocation-and-memory-sharing">Resource Allocation and
+Memory Sharing</h2>
+<p>Work-items within the same work-group execute on the same compute
+unit (CU) and share high-speed on-chip local memory
+(<code>__local</code>). The size of a work-group directly dictates:</p>
+<ul>
+<li><strong>Local Memory Footprint:</strong> Larger work-groups often
+require larger allocations of shared local memory. If the work-group
+size approaches the device maximum, the local memory requirements might
+exhaust the compute unit's physical capacity
+(<code>CL_DEVICE_LOCAL_MEM_SIZE</code>), causing compilation or launch
+failures.</li>
+<li><strong>Synchronization Scope:</strong> Work-group barriers
+(<code>barrier(CLK_LOCAL_MEM_FENCE)</code>) synchronize all items within
+a work-group. Larger work-group sizes increase the synchronization
+overhead, which can degrade execution throughput if synchronization
+points are frequent.</li>
+</ul>
+<h2 id="impact-on-occupancy-and-scheduling">Impact on Occupancy and
+Scheduling</h2>
+<p>Hardware architectures (such as AMD Wavefronts or NVIDIA Warps)
+schedule work-items in fixed-size SIMD lockstep units (typically 32 or
+64 threads). When planning execution:</p>
+<ul>
+<li><strong>Granularity Alignment:</strong> The work-group size should
+be a multiple of the device's native SIMD width to avoid idling compute
+lanes.</li>
+<li><strong>Occupancy Tuning:</strong> Maxing out the work-group size
+does not always yield maximum performance. Setting the work-group size
+to the exact value of <code>CL_DEVICE_MAX_WORK_GROUP_SIZE</code> can
+monopolize compute unit resources, preventing the hardware scheduler
+from interleaving multiple active work-groups to hide memory latency.
+Balancing work-group size allows multiple in-flight work-groups per
+compute unit, improving overall pipeline saturation.</li>
+</ul>
+<h2 id="portability-and-error-handling">Portability and Error
+Handling</h2>
+<p>Hardcoding local work-group dimensions violates OpenCL's portability
+model. An application configured for a desktop GPU with a
+<code>CL_DEVICE_MAX_WORK_GROUP_SIZE</code> of 1024 will immediately fail
+with a <code>CL_INVALID_WORK_GROUP_SIZE</code> error if executed on an
+integrated GPU, embedded accelerator, or CPU with a lower threshold
+(e.g., 256 or 512).</p>
+<p>Robust execution planning requires querying both
+<code>CL_DEVICE_MAX_WORK_GROUP_SIZE</code> and
+<code>CL_KERNEL_WORK_GROUP_SIZE</code> at runtime. Compute dimensions
+can then be determined adaptively:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> device_max<span class="op">;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> kernel_max<span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>clGetDeviceInfo<span class="op">(</span>device<span class="op">,</span> CL_DEVICE_MAX_WORK_GROUP_SIZE<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span><span class="dt">size_t</span><span class="op">),</span> <span class="op">&amp;</span>device_max<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>clGetKernelWorkGroupInfo<span class="op">(</span>kernel<span class="op">,</span> device<span class="op">,</span> CL_KERNEL_WORK_GROUP_SIZE<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span><span class="dt">size_t</span><span class="op">),</span> <span class="op">&amp;</span>kernel_max<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co">// Choose a valid size bounded by the stricter limit</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> max_allowed <span class="op">=</span> <span class="op">(</span>device_max <span class="op">&lt;</span> kernel_max<span class="op">)</span> <span class="op">?</span> device_max <span class="op">:</span> kernel_max<span class="op">;</span></span></code></pre></div>
+<p>Alternatively, passing <code>NULL</code> for the
+<code>local_work_size</code> parameter in
+<code>clEnqueueNDRangeKernel</code> delegates the work-group
+configuration to the OpenCL runtime implementation, which attempts to
+select an optimal size based on these internal hardware constraints.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

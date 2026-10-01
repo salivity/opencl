@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Updating Ghost Cells Across Distributed OpenCL Nodes - opencl</title>
+    <meta name="description" content="Updating boundary ghost cells—also known as halo exchange—across distributed OpenCL nodes requires combining OpenCL for local device acceleration with a distributed communication layer like the Message Passing Interface (MPI). Because OpenCL natively">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/updating-ghost-cells-across-distributed-open-cl-nodes">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Updating Ghost Cells Across Distributed OpenCL Nodes - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/updating-ghost-cells-across-distributed-open-cl-nodes" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Updating boundary ghost cells—also known as halo exchange—across distributed OpenCL nodes requires combining OpenCL for local device acceleration with a distributed communication layer like the Message Passing Interface (MPI). Because OpenCL natively" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="updating-ghost-cells-across-distributed-opencl-nodes">Updating
+Ghost Cells Across Distributed OpenCL Nodes</h1>
+<p>Updating boundary ghost cells—also known as halo exchange—across
+distributed OpenCL nodes requires combining OpenCL for local device
+acceleration with a distributed communication layer like the Message
+Passing Interface (MPI). Because OpenCL natively targets single compute
+devices, distributed scaling relies on domain decomposition where each
+node computes an assigned subdomain. The update pipeline involves
+extracting device boundary data, transporting it across nodes via
+network interconnects, and inserting the received data into neighbor
+ghost cells to preserve numerical continuity across computational domain
+borders.</p>
+<h2 id="1-domain-decomposition-and-ghost-cells">1. Domain Decomposition
+and Ghost Cells</h2>
+<p>In grid-based simulations (such as finite-difference or stencil
+codes), domain decomposition splits a global grid across multiple nodes.
+Each subdomain requires a surrounding boundary layer—a ghost cell or
+halo region—to calculate stencils near the edge of the local domain.
+When an iteration finishes, boundary values calculated on one node must
+overwrite the corresponding ghost cells on neighboring nodes.</p>
+<h2 id="2-the-halo-exchange-workflow">2. The Halo Exchange Workflow</h2>
+<p>A standard halo exchange cycle across distributed OpenCL nodes
+follows a structured sequence:</p>
+<ol type="1">
+<li><strong>Pack Boundaries on the Device:</strong> Multidimensional
+grids often store non-contiguous boundary slices. Launch a lightweight
+OpenCL packing kernel to gather boundary elements into a contiguous 1D
+transfer buffer on the device. Contiguous buffers maximize transfer
+speeds over both PCIe and network layers.</li>
+<li><strong>Transfer from Device to Host:</strong> Use
+<code>clEnqueueReadBuffer</code> to move the packed boundary data from
+the OpenCL device memory to pinned host memory. Using non-blocking reads
+allows host-level operations to proceed asynchronously.</li>
+<li><strong>Execute Network Communication (MPI):</strong> Exchange the
+packed buffers across distributed nodes using non-blocking MPI
+primitives (<code>MPI_Isend</code> and <code>MPI_Irecv</code>).
+Non-blocking calls prevent distributed deadlocks and allow communication
+to overlap with independent computations.</li>
+<li><strong>Transfer from Host to Device:</strong> Once network
+transfers complete (<code>MPI_Waitall</code>), copy the received data
+into the target device using <code>clEnqueueWriteBuffer</code> targeting
+the host-to-device stream.</li>
+<li><strong>Unpack Halo into Ghost Regions:</strong> Launch an OpenCL
+unpacking kernel to scatter the contiguous received data into the
+multi-dimensional ghost cell regions of the computational grid.</li>
+</ol>
+<h2 id="3-performance-optimization-strategies">3. Performance
+Optimization Strategies</h2>
+<h3 id="overlapping-computation-and-communication">Overlapping
+Computation and Communication</h3>
+<p>Separate the compute domain into interior cells and boundary
+cells:</p>
+<ul>
+<li>Calculate boundary cells first with OpenCL.</li>
+<li>Trigger the ghost cell update (pack, D2H, MPI exchange, H2D, unpack)
+asynchronously.</li>
+<li>Compute the interior cells while the boundary exchange is in transit
+across the network.</li>
+<li>Synchronize before advancing to the next time step.</li>
+</ul>
+<h3 id="using-pinned-page-locked-host-memory">Using Pinned (Page-Locked)
+Host Memory</h3>
+<p>Allocate host buffers with the <code>CL_MEM_ALLOC_HOST_PTR</code>
+flag or map memory using <code>clEnqueueMapBuffer</code>. Pinned host
+memory enables faster Direct Memory Access (DMA) transfers between the
+host system and the OpenCL device, reducing PCIe transfer overhead.</p>
+<h3 id="dual-queue-concurrency">Dual-Queue Concurrency</h3>
+<p>Utilize at least two <code>cl_command_queue</code> instances per
+node:</p>
+<ul>
+<li>One queue dedicated to compute kernels (interior grid updates).</li>
+<li>A second queue dedicated to memory transfers and packing/unpacking
+kernels. This setup ensures the OpenCL runtime overlaps memory
+operations with active compute pipelines where supported by device
+hardware.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

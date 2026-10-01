@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mem_fence vs barrier in OpenCL C - opencl</title>
+    <meta name="description" content="In OpenCL C, both memfence and barrier are synchronization primitives used to manage concurrency, but they serve fundamentally different purposes. While memfence enforces memory ordering constraints for the calling work-item without pausing its execution">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/mem-fence-vs-barrier-in-open-cl-c">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="mem_fence vs barrier in OpenCL C - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/mem-fence-vs-barrier-in-open-cl-c" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL C, both memfence and barrier are synchronization primitives used to manage concurrency, but they serve fundamentally different purposes. While memfence enforces memory ordering constraints for the calling work-item without pausing its execution" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="mem_fence-vs-barrier-in-opencl-c">mem_fence vs barrier in OpenCL
+C</h1>
+<p>In OpenCL C, both <code>mem_fence</code> and <code>barrier</code> are
+synchronization primitives used to manage concurrency, but they serve
+fundamentally different purposes. While <code>mem_fence</code> enforces
+memory ordering constraints for the calling work-item without pausing
+its execution relative to its peers, <code>barrier</code> provides both
+memory ordering and execution synchronization, forcing every work-item
+in a work-group to wait until all have reached the same point in code.
+Understanding this distinction is critical for writing correct,
+deadlock-free, and high-performance kernel code.</p>
+<h3 id="execution-synchronization">Execution Synchronization</h3>
+<p>The most significant difference lies in execution control:</p>
+<ul>
+<li><strong><code>barrier</code></strong>: Halts execution. When a
+work-item reaches a <code>barrier</code>, it suspends execution until
+every work-item in the same work-group arrives at the barrier. Only
+after all work-items arrive does execution resume.</li>
+<li><strong><code>mem_fence</code></strong>: Does not halt execution. A
+work-item executing <code>mem_fence</code> continues running without
+waiting for any other work-item in the work-group.</li>
+</ul>
+<h3 id="memory-ordering">Memory Ordering</h3>
+<p>Both functions accept memory flags (<code>CLK_LOCAL_MEM_FENCE</code>,
+<code>CLK_GLOBAL_MEM_FENCE</code>, or a combination of both via bitwise
+OR) to define which memory spaces are affected:</p>
+<ul>
+<li><strong><code>mem_fence</code></strong>: Guarantees that all memory
+loads and stores issued by the calling work-item prior to the fence are
+committed to memory before any loads or stores issued after the fence.
+It enforces a strict ordering pipeline to prevent compiler or hardware
+reordering across the fence boundary.</li>
+<li><strong><code>barrier</code></strong>: Implies an automatic
+<code>mem_fence</code> using the specified flags. In addition to
+synchronizing execution, it ensures that all memory transactions
+initiated by all work-items in the work-group before the barrier are
+globally or locally committed before any work-item proceeds past the
+barrier.</li>
+</ul>
+<h3 id="control-flow-and-deadlock-risks">Control Flow and Deadlock
+Risks</h3>
+<p>Because <code>barrier</code> coordinates execution across the entire
+work-group, it is subject to strict convergence rules:</p>
+<ul>
+<li><strong><code>barrier</code></strong>: Must be encountered by all
+work-items in a work-group executing the same dynamic path. If a
+<code>barrier</code> is placed inside a divergent conditional branch
+(e.g., an <code>if</code> statement where only some work-items enter),
+the behavior is undefined and typically results in a GPU kernel hang or
+deadlock.</li>
+<li><strong><code>mem_fence</code></strong>: Can safely be used inside
+conditional code or loops with divergent execution. Because it only
+affects the ordering of the executing work-item's own memory operations,
+divergent branches do not risk deadlock.</li>
+</ul>
+<h3 id="practical-use-cases">Practical Use Cases</h3>
+<ul>
+<li><strong>Use <code>barrier</code></strong> when work-items need to
+share data safely. The standard pattern involves work-items
+collaboratively loading data from global memory into
+<code>__local</code> memory, calling
+<code>barrier(CLK_LOCAL_MEM_FENCE)</code> to ensure the shared memory is
+fully written, and then reading each other's data without data
+races.</li>
+<li><strong>Use <code>mem_fence</code></strong> when implementing
+lock-free data structures, custom atomic synchronization protocols, or
+producer-consumer patterns between work-items across groups where
+waiting for an entire work-group is either impossible or unnecessary. It
+ensures writes to flag variables are committed only after the payload
+data is safely written to memory.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

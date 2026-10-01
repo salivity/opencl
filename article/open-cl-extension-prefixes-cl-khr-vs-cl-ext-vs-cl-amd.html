@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Extension Prefixes: cl_khr vs cl_ext vs cl_amd - opencl</title>
+    <meta name="description" content="In OpenCL, function and token prefixes define the governing authority, portability, and standardization status of an extension. The prefixes clkhr, clext, and vendor-specific markers like clamd signify distinct tiers of approval within the Khronos ecosys">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-extension-prefixes-cl-khr-vs-cl-ext-vs-cl-amd">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Extension Prefixes: cl_khr vs cl_ext vs cl_amd - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-extension-prefixes-cl-khr-vs-cl-ext-vs-cl-amd" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, function and token prefixes define the governing authority, portability, and standardization status of an extension. The prefixes clkhr, clext, and vendor-specific markers like clamd signify distinct tiers of approval within the Khronos ecosys" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-extension-prefixes-cl_khr-vs-cl_ext-vs-cl_amd">OpenCL
+Extension Prefixes: cl_khr vs cl_ext vs cl_amd</h1>
+<p>In OpenCL, function and token prefixes define the governing
+authority, portability, and standardization status of an extension. The
+prefixes <code>cl_khr_</code>, <code>cl_ext_</code>, and vendor-specific
+markers like <code>cl_amd_</code> signify distinct tiers of approval
+within the Khronos ecosystem, ranging from ratified cross-platform
+additions to proprietary single-vendor hardware features. Understanding
+these distinctions helps developers determine the portability and
+stability of the features they implement.</p>
+<h3 id="the-extension-hierarchy">The Extension Hierarchy</h3>
+<p>The Khronos Group divides OpenCL extensions into a three-tiered
+hierarchy. This tiered model ensures that hardware vendors can innovate
+quickly with new hardware capabilities while providing a clear path
+toward industry-wide standardization.</p>
+<h3 id="cl_khr_-khronos-approved-extensions"><code>cl_khr_</code>
+(Khronos Approved Extensions)</h3>
+<p>The <code>cl_khr_</code> prefix indicates an official Khronos
+Extension.</p>
+<ul>
+<li><strong>Governance:</strong> These extensions are reviewed,
+authored, and ratified directly by the Khronos OpenCL Working
+Group.</li>
+<li><strong>Portability:</strong> High. While optional for conformance
+unless promoted to core, <code>cl_khr_</code> extensions are designed to
+work across any vendor's hardware that implements them (e.g., AMD,
+Intel, NVIDIA, ARM).</li>
+<li><strong>Core Promotion:</strong> These extensions frequently serve
+as testing grounds for prospective core features. For instance,
+half-precision floating-point support (<code>cl_khr_fp16</code>) and
+OpenGL sharing (<code>cl_khr_gl_sharing</code>) are widely supported KHR
+extensions, many elements of which have transitioned into subsequent
+core OpenCL specifications.</li>
+<li><strong>Testing:</strong> Khronos-approved extensions must pass
+official Khronos Conformance Test Suite (CTS) requirements when
+supported by a compliant implementation.</li>
+</ul>
+<h3 id="cl_ext_-multi-vendor-extensions"><code>cl_ext_</code>
+(Multi-Vendor Extensions)</h3>
+<p>The <code>cl_ext_</code> prefix denotes an external, multi-vendor
+extension.</p>
+<ul>
+<li><strong>Governance:</strong> These extensions are not formally
+ratified by the Khronos OpenCL Working Group. Instead, they are agreed
+upon and shared by at least two distinct hardware or software
+vendors.</li>
+<li><strong>Portability:</strong> Moderate. A <code>cl_ext_</code>
+extension is supported by more than one platform vendor, but it does not
+carry the formal endorsement or guarantee of universality provided by
+Khronos.</li>
+<li><strong>Purpose:</strong> This prefix allows multiple vendors to
+collaborate on shared functionality without waiting for the full Khronos
+ratification process. If an external extension sees widespread adoption
+and utility, it is often submitted to Khronos to become a
+<code>cl_khr_</code> extension.</li>
+</ul>
+<h3
+id="vendor-specific-prefixes-cl_amd_-cl_nv_-cl_intel_">Vendor-Specific
+Prefixes (<code>cl_amd_</code>, <code>cl_nv_</code>,
+<code>cl_intel_</code>)</h3>
+<p>Vendor-specific prefixes designate proprietary extensions created by
+an individual manufacturer. Examples include <code>cl_amd_</code> for
+Advanced Micro Devices, <code>cl_nv_</code> for NVIDIA,
+<code>cl_intel_</code> for Intel, and <code>cl_arm_</code> for ARM.</p>
+<ul>
+<li><strong>Governance:</strong> The vendor maintains complete control
+over the design, implementation, and lifecycle of the extension. Khronos
+plays no role in approving its specification.</li>
+<li><strong>Portability:</strong> None. These extensions are intended
+exclusively for the authoring vendor's hardware and runtime. Code
+relying on a <code>cl_amd_</code> extension will fail on non-AMD
+platforms unless vendor-checking logic and alternative fallbacks are
+written into the host application.</li>
+<li><strong>Purpose:</strong> Vendor prefixes allow hardware
+manufacturers to expose niche architectural features, custom assembly
+instructions, or experimental performance optimizations immediately upon
+new hardware releases.</li>
+</ul>
+<h3 id="developer-considerations">Developer Considerations</h3>
+<p>When writing OpenCL code, prioritize core API features first,
+followed by <code>cl_khr_</code> extensions to ensure maximum
+cross-platform compatibility across heterogeneous devices. Reserve
+<code>cl_ext_</code> and vendor-specific prefixes like
+<code>cl_amd_</code> for scenarios where targeting platform-specific
+silicon features yields a critical performance benefit that outweighs
+the loss of software portability.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

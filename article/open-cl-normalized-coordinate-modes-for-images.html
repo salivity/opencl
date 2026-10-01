@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Normalized Coordinate Modes for Images - opencl</title>
+    <meta name="description" content="This article provides an overview of normalized coordinate handling in OpenCL image sampling, detailing how normalized coordinates function, how they are configured within samplers, and which addressing modes are supported when utilizing normalized coord">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-normalized-coordinate-modes-for-images">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Normalized Coordinate Modes for Images - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-normalized-coordinate-modes-for-images" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article provides an overview of normalized coordinate handling in OpenCL image sampling, detailing how normalized coordinates function, how they are configured within samplers, and which addressing modes are supported when utilizing normalized coord" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-normalized-coordinate-modes-for-images">OpenCL Normalized
+Coordinate Modes for Images</h1>
+<p>This article provides an overview of normalized coordinate handling
+in OpenCL image sampling, detailing how normalized coordinates function,
+how they are configured within samplers, and which addressing modes are
+supported when utilizing normalized coordinate spaces.</p>
+<p>In OpenCL, image read functions can sample textures and images using
+either unnormalized coordinates or normalized coordinates. This behavior
+is defined when creating a sampler object (<code>cl_sampler</code> via
+the OpenCL API or <code>sampler_t</code> directly within OpenCL C kernel
+code) using the normalized coordinates flag.</p>
+<h3 id="the-normalized-coordinate-states">The Normalized Coordinate
+States</h3>
+<p>OpenCL supports two primary modes for image coordinate
+interpretation:</p>
+<ul>
+<li><strong>Normalized Coordinates Enabled
+(<code>CLK_NORMALIZED_COORDS_TRUE</code> /
+<code>CL_TRUE</code>):</strong> Coordinate values are specified as
+floating-point numbers ranging from <code>0.0</code> to
+<code>1.0</code>, where <code>0.0</code> represents the edge of the
+first pixel and <code>1.0</code> represents the edge of the last pixel,
+independent of the underlying image dimensions.</li>
+<li><strong>Unnormalized Coordinates Enabled
+(<code>CLK_NORMALIZED_COORDS_FALSE</code> /
+<code>CL_FALSE</code>):</strong> Coordinates are interpreted directly in
+pixel/element units ranging from <code>0</code> to the image's dimension
+minus one (<code>width - 1</code>, <code>height - 1</code>, etc.).</li>
+</ul>
+<h3
+id="addressing-modes-supported-with-normalized-coordinates">Addressing
+Modes Supported with Normalized Coordinates</h3>
+<p>When normalized coordinates are set to
+<code>CLK_NORMALIZED_COORDS_TRUE</code>, OpenCL specifies how
+out-of-bounds coordinates (values less than <code>0.0</code> or greater
+than <code>1.0</code>) are processed via addressing modes. The following
+addressing modes are supported:</p>
+<ul>
+<li><strong><code>CLK_ADDRESS_REPEAT</code> (or
+<code>CL_ADDRESS_REPEAT</code>):</strong> Out-of-bounds coordinates wrap
+around periodically. This mode is exclusively supported with normalized
+coordinates and cannot be used with unnormalized coordinates. A
+coordinate of <code>1.2</code> maps to <code>0.2</code>.</li>
+<li><strong><code>CLK_ADDRESS_MIRRORED_REPEAT</code> (or
+<code>CL_ADDRESS_MIRRORED_REPEAT</code>):</strong> Out-of-bounds
+coordinates reflect at the boundaries, effectively mirroring the texture
+across the <code>[0.0, 1.0]</code> range. This mode is also designed
+strictly for normalized coordinates.</li>
+<li><strong><code>CLK_ADDRESS_CLAMP_TO_EDGE</code> (or
+<code>CL_ADDRESS_CLAMP_TO_EDGE</code>):</strong> Coordinates falling
+outside <code>[0.0, 1.0]</code> are clamped to the boundary pixels:
+values below <code>0.0</code> clamp to the nearest valid edge
+coordinate, and values above <code>1.0</code> clamp to the opposing
+edge.</li>
+<li><strong><code>CLK_ADDRESS_CLAMP</code> (or
+<code>CL_ADDRESS_CLAMP</code>):</strong> Coordinates outside the
+<code>[0.0, 1.0]</code> range return a predefined border color (either
+<code>(0.0, 0.0, 0.0, 0.0)</code> for float formats or
+<code>(0, 0, 0, 0)</code> for integer formats).</li>
+<li><strong><code>CLK_ADDRESS_NONE</code> (or
+<code>CL_ADDRESS_NONE</code>):</strong> Out-of-bounds behavior is
+undefined. This option bypasses hardware boundary checking to maximize
+read performance when coordinates are guaranteed to fall strictly within
+the <code>[0.0, 1.0]</code> range.</li>
+</ul>
+<h3 id="filtering-interaction">Filtering Interaction</h3>
+<p>Normalized coordinates function across both supported filtering
+modes:</p>
+<ul>
+<li><strong><code>CLK_FILTER_NEAREST</code>:</strong> Samples the single
+pixel closest to the normalized coordinate.</li>
+<li><strong><code>CLK_FILTER_LINEAR</code>:</strong> Performs linear
+interpolation (bilinear for 2D, trilinear for 3D) across neighboring
+pixels based on the normalized floating-point position.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

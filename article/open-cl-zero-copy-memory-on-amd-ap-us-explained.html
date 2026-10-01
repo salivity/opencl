@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Zero-Copy Memory on AMD APUs Explained - opencl</title>
+    <meta name="description" content="AMD Accelerated Processing Units (APUs) integrate CPU and GPU compute engines onto a single silicon die sharing a unified physical memory controller. In traditional OpenCL applications targeting discrete GPUs, data must be explicitly copied across the PC">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-zero-copy-memory-on-amd-ap-us-explained">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Zero-Copy Memory on AMD APUs Explained - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-zero-copy-memory-on-amd-ap-us-explained" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="AMD Accelerated Processing Units (APUs) integrate CPU and GPU compute engines onto a single silicon die sharing a unified physical memory controller. In traditional OpenCL applications targeting discrete GPUs, data must be explicitly copied across the PC" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-zero-copy-memory-on-amd-apus-explained">OpenCL Zero-Copy
+Memory on AMD APUs Explained</h1>
+<p>AMD Accelerated Processing Units (APUs) integrate CPU and GPU compute
+engines onto a single silicon die sharing a unified physical memory
+controller. In traditional OpenCL applications targeting discrete GPUs,
+data must be explicitly copied across the PCIe bus between system RAM
+and dedicated video memory (VRAM). On AMD APUs, zero-copy memory access
+eliminates this redundant transfer by allowing the CPU and GPU to access
+the exact same physical memory space directly, minimizing latency,
+reducing power consumption, and significantly improving data throughput
+for heterogeneous workloads.</p>
+<h3 id="the-underlying-hardware-architecture">The Underlying Hardware
+Architecture</h3>
+<p>Traditional discrete GPUs (dGPUs) have separate physical memory pools
+(system DDR vs. GPU GDDR/HBM) connected via a PCIe interface. In
+contrast, an AMD APU employs a unified memory architecture where the CPU
+cores and GPU Compute Units (CUs) share the system DDR memory bus.</p>
+<p>Because both processors share physical access to the same DRAM,
+physical data relocation across an interconnect is unnecessary. AMD's
+Heterogeneous System Architecture (HSA) provides hardware-level cache
+coherency between the CPU caches and GPU caches, meaning memory
+modifications made by one processor can be immediately visible to the
+other without manual cache flushes when synchronized correctly.</p>
+<h3 id="opencl-buffer-allocation-for-zero-copy">OpenCL Buffer Allocation
+for Zero-Copy</h3>
+<p>To enable zero-copy execution in OpenCL on an AMD APU, the
+application must instruct the OpenCL runtime to allocate or map
+host-accessible memory directly rather than simulating a discrete memory
+space. This is handled using specific memory flags within
+<code>clCreateBuffer</code>:</p>
+<ol type="1">
+<li><strong><code>CL_MEM_ALLOC_HOST_PTR</code></strong>: Directs the
+OpenCL runtime to allocate memory from the host-accessible memory pool
+that is directly readable and writable by the GPU. This is the preferred
+method for zero-copy allocations on AMD platforms.</li>
+<li><strong><code>CL_MEM_USE_HOST_PTR</code></strong>: Instructs the
+OpenCL driver to use an existing block of memory allocated by the host
+application (e.g., via <code>malloc</code> or
+<code>posix_memalign</code>). For this method to achieve zero-copy
+behavior on AMD APUs, the memory block must be properly aligned
+(typically to 4096-byte page boundaries).</li>
+</ol>
+<h3 id="the-mapping-and-synchronization-workflow">The Mapping and
+Synchronization Workflow</h3>
+<p>Instead of transferring data using <code>clEnqueueReadBuffer</code>
+and <code>clEnqueueWriteBuffer</code>—which invoke memory copy
+routines—zero-copy uses buffer mapping:</p>
+<ol type="1">
+<li><strong>Buffer Creation</strong>: A buffer is initialized using
+<code>CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR</code>.</li>
+<li><strong>Mapping to Host</strong>: The host calls
+<code>clEnqueueMapBuffer</code>. Rather than moving bytes across a bus,
+the runtime returns a direct virtual pointer to the shared memory
+region.</li>
+<li><strong>Host Processing</strong>: The CPU reads or writes to the
+mapped pointer directly at native system memory speeds.</li>
+<li><strong>Unmapping</strong>: Before the GPU kernel executes, the host
+calls <code>clEnqueueUnmapMemObject</code>. This operation does not
+transfer data; instead, it establishes a synchronization barrier that
+ensures CPU write buffers are flushed and memory caches are
+coherent.</li>
+<li><strong>Kernel Execution</strong>: The GPU kernel executes
+(<code>clEnqueueNDRangeKernel</code>), referencing the buffer directly
+in system RAM.</li>
+<li><strong>Post-Execution Access</strong>: The host maps the buffer
+again to read results directly from the same physical addresses modified
+by the GPU.</li>
+</ol>
+<h3 id="cache-coherency-and-memory-consistency">Cache Coherency and
+Memory Consistency</h3>
+<p>Zero-copy behavior relies on AMD's hardware coherency mechanisms.
+When the GPU writes to unified memory, it can bypass its own internal L1
+caches or write through directly to the coherent L2 cache or system
+RAM.</p>
+<p>When the OpenCL runtime executes an unmap command or an event
+dependency completes, it triggers cache flush and invalidate
+instructions. This guarantees that stale cache lines in either the CPU
+(such as L3) or the GPU L2 cache do not lead to race conditions or
+silent data corruption.</p>
+<h3 id="best-practices-for-apu-zero-copy-performance">Best Practices for
+APU Zero-Copy Performance</h3>
+<ul>
+<li><strong>Memory Alignment</strong>: Ensure that memory allocations
+align with 256-byte or 4096-byte boundaries to match cache lines and
+memory page sizes, allowing vectorized loads and stores.</li>
+<li><strong>Avoid Implicit Copies</strong>: Never use
+<code>clEnqueueReadBuffer</code> or <code>clEnqueueWriteBuffer</code>
+with zero-copy flags, as this forces the driver to execute unnecessary
+memory-to-memory copy operations inside system RAM.</li>
+<li><strong>Bandwidth Contention</strong>: Because the CPU and GPU share
+the same physical DDR memory bus, high memory traffic from both
+processors simultaneously can lead to memory bandwidth saturation.
+Optimize kernel memory access patterns to maximize GPU cache hit rates
+and reduce pressure on the shared memory controller.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

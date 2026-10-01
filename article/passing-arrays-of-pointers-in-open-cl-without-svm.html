@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passing Arrays of Pointers in OpenCL Without SVM - opencl</title>
+    <meta name="description" content="Transferring arrays of pointers directly from a host CPU to an OpenCL device is invalid in non-Shared Virtual Memory (SVM) configurations due to isolated address spaces and the failure of shallow pointer copies. In standard OpenCL architectures, the host">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/passing-arrays-of-pointers-in-open-cl-without-svm">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Passing Arrays of Pointers in OpenCL Without SVM - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/passing-arrays-of-pointers-in-open-cl-without-svm" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Transferring arrays of pointers directly from a host CPU to an OpenCL device is invalid in non-Shared Virtual Memory (SVM) configurations due to isolated address spaces and the failure of shallow pointer copies. In standard OpenCL architectures, the host" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="passing-arrays-of-pointers-in-opencl-without-svm">Passing Arrays
+of Pointers in OpenCL Without SVM</h1>
+<p>Transferring arrays of pointers directly from a host CPU to an OpenCL
+device is invalid in non-Shared Virtual Memory (SVM) configurations due
+to isolated address spaces and the failure of shallow pointer copies. In
+standard OpenCL architectures, the host and the compute device maintain
+distinct physical and virtual memory spaces. Passing an array of
+host-side pointers results in the device attempting to dereference
+memory addresses that do not exist or are mapped differently within its
+own execution context, leading to memory faults or undefined
+behavior.</p>
+<h3 id="disjoint-memory-address-spaces">Disjoint Memory Address
+Spaces</h3>
+<p>In a non-SVM OpenCL environment, the host and device do not share a
+unified virtual address space. The CPU manages memory through its
+operating system's virtual memory subsystem, generating host virtual
+addresses. Dedicated accelerators, such as discrete GPUs, utilize their
+own distinct memory controllers and local address spaces.</p>
+<p>When you allocate an array of pointers on the host (such as
+<code>float**</code>), each pointer contains a 64-bit or 32-bit virtual
+memory address valid only within the host process. An OpenCL device
+cannot access the host operating system's page tables to resolve these
+addresses.</p>
+<h3 id="the-shallow-copy-problem">The Shallow Copy Problem</h3>
+<p>When a buffer containing an array of pointers is copied to a device
+using <code>clEnqueueWriteBuffer</code>, OpenCL performs a bitwise copy
+(shallow copy) of the buffer contents. The device receives the literal
+numeric values of the host memory addresses:</p>
+<ol type="1">
+<li><strong>Host Allocation:</strong> The host allocates multiple
+distinct memory blocks and populates an array with the pointers to those
+blocks.</li>
+<li><strong>Buffer Transfer:</strong> The array containing the pointer
+values is copied to an OpenCL <code>cl_mem</code> buffer.</li>
+<li><strong>Kernel Execution:</strong> When an OpenCL work-item attempts
+to dereference one of these transferred pointers, it treats the host
+address as an address in the device's global memory.</li>
+</ol>
+<p>Because the underlying data resides in host RAM and not in the
+device's global memory, dereferencing these addresses on the device
+points to unallocated or unrelated device memory, causing invalid memory
+accesses, silent data corruption, or hardware exceptions.</p>
+<h3 id="the-role-of-shared-virtual-memory-svm">The Role of Shared
+Virtual Memory (SVM)</h3>
+<p>OpenCL 2.0 introduced Shared Virtual Memory to solve this
+architectural limitation. SVM provides a single, unified virtual address
+space across both the host and the device. Under coarse-grained or
+fine-grained buffer SVM, pointers generated by the host can be safely
+passed to and dereferenced by the device because both processors agree
+on the mapping between virtual addresses and physical data.</p>
+<p>In non-SVM configurations (including OpenCL 1.x and devices that do
+not support the SVM extension), this translation layer does not exist.
+OpenCL relies strictly on explicit memory objects (<code>cl_mem</code>)
+that are tracked and bound to kernel arguments individually.</p>
+<h3 id="standard-workarounds">Standard Workarounds</h3>
+<p>To process multi-dimensional or nested data structures on OpenCL
+devices without SVM, developers must serialize their data
+structures:</p>
+<ul>
+<li><strong>Array Flattening:</strong> Transform multi-dimensional
+arrays or jagged pointer-based structures into a single, contiguous 1D
+array. Elements are then accessed via computed index arithmetic (e.g.,
+<code>index = row * width + col</code>).</li>
+<li><strong>Offset-Based Addressing:</strong> Replace absolute pointers
+with relative offsets from the base address of a single, unified device
+buffer. The kernel can then reconstruct the target address by adding the
+offset to the base pointer of the allocated global buffer.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

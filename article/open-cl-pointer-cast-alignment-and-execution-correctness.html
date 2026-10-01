@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Pointer Cast Alignment and Execution Correctness - opencl</title>
+    <meta name="description" content="Pointer cast alignment is a critical factor in OpenCL kernel portability, dictating whether code runs reliably, crashes, or produces silent data corruption across heterogeneous hardware. Casting a pointer to a type with a stricter alignment boundary (suc">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-pointer-cast-alignment-and-execution-correctness">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Pointer Cast Alignment and Execution Correctness - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-pointer-cast-alignment-and-execution-correctness" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Pointer cast alignment is a critical factor in OpenCL kernel portability, dictating whether code runs reliably, crashes, or produces silent data corruption across heterogeneous hardware. Casting a pointer to a type with a stricter alignment boundary (suc" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-pointer-cast-alignment-and-execution-correctness">OpenCL
+Pointer Cast Alignment and Execution Correctness</h1>
+<p>Pointer cast alignment is a critical factor in OpenCL kernel
+portability, dictating whether code runs reliably, crashes, or produces
+silent data corruption across heterogeneous hardware. Casting a pointer
+to a type with a stricter alignment boundary (such as casting a
+<code>char*</code> or <code>uchar*</code> to an <code>int4*</code>)
+without guaranteeing the base address meets that boundary leads to
+undefined behavior according to the OpenCL C specification. Because
+OpenCL targets a vast spectrum of architectures—including CPUs, discrete
+GPUs, integrated GPUs, DSPs, and FPGAs—the physical manifestation of an
+unaligned pointer cast varies widely depending on how the underlying
+memory subsystems handle misaligned addresses.</p>
+<h3 id="the-mechanics-of-alignment-in-opencl-c">The Mechanics of
+Alignment in OpenCL C</h3>
+<p>Every primitive and vector type in OpenCL has natural alignment
+requirements. For example, a scalar <code>float</code> requires 4-byte
+alignment, while a vector <code>float4</code> or <code>int4</code>
+requires 16-byte alignment. When a pointer is cast from a type with a
+smaller alignment requirement to one with a larger requirement, the
+compiler assumes the resulting address conforms to the target type's
+boundary.</p>
+<p>If this assumption is violated, the OpenCL specification defines the
+behavior as undefined. The compiler may generate vectorized load and
+store instructions that inherently assume alignment, bypassing any
+manual checks and relying entirely on the target hardware's memory
+controller.</p>
+<h3 id="behavioral-divergence-across-architectures">Behavioral
+Divergence Across Architectures</h3>
+<p>The impact of misaligned pointer casts depends on how the specific
+device architecture handles unaligned memory operations:</p>
+<ul>
+<li><strong>x86 and Modern CPUs:</strong> Modern x86-64 CPUs typically
+support unaligned memory accesses in hardware. If an OpenCL CPU driver
+executes a misaligned read, the hardware often handles it automatically.
+However, this incurs a performance penalty (such as split cache-line
+accesses). Developers testing exclusively on CPUs may observe normal
+execution, falsely assuming their code is portable.</li>
+<li><strong>GPUs (AMD, NVIDIA, Intel):</strong> GPUs exhibit mixed
+responses. Some modern architectures support unaligned global memory
+transactions by splitting a single request into multiple memory
+segments, which dramatically degrades memory coalescing and bandwidth.
+Conversely, operations targeting local memory (<code>__local</code> or
+shared memory) often rely on strict memory bank interleaving. A
+misaligned pointer in local memory can trigger an illegal address trap,
+wrap the address to a boundary, or produce silent data corruption by
+reading from the wrong bank.</li>
+<li><strong>ARM, DSPs, and Specialized Embedded Processors:</strong>
+Many embedded GPUs and DSP architectures strictly forbid unaligned
+vector accesses. In these environments, executing a misaligned load or
+store instruction results in a hardware fault (such as a bus error),
+causing the OpenCL driver to report an unrecoverable
+<code>CL_OUT_OF_RESOURCES</code> or kernel execution failure.</li>
+<li><strong>FPGAs:</strong> In custom FPGA pipelines generated via
+OpenCL, memory interfaces are synthesized to specific bit-widths.
+Misaligned access can truncate lower address bits, causing the pipeline
+to read stale data, write to incorrect registers, or stall the hardware
+execution pipeline entirely.</li>
+</ul>
+<h3 id="memory-spaces-matter">Memory Spaces Matter</h3>
+<p>Pointer alignment sensitivities differ across OpenCL address
+spaces:</p>
+<ol type="1">
+<li><strong><code>__global</code> Memory:</strong> Usually routed
+through caching hierarchies that might tolerate misalignment at a high
+performance cost.</li>
+<li><strong><code>__local</code> Memory:</strong> Employs banked SRAM.
+Misalignment disrupts memory bank mapping, leading to high-overhead bank
+conflicts or driver-level memory faults.</li>
+<li><strong><code>__constant</code> Memory:</strong> Designed for
+broadcast access; unaligned vector reads frequently fail or deliver
+corrupted broadcasts to work-items within a work-group.</li>
+</ol>
+<h3 id="strategies-for-portable-correct-execution">Strategies for
+Portable, Correct Execution</h3>
+<p>To ensure correctness across all OpenCL-compliant devices without
+relying on target-specific hardware leniency, implement the following
+practices:</p>
+<ul>
+<li><strong>Use Vector Load/Store Built-ins:</strong> Instead of casting
+pointers (e.g., <code>*(float4*)ptr</code>), use <code>vload4</code> and
+<code>vstore4</code>. The OpenCL specification guarantees that
+<code>vloadn</code> and <code>vstoren</code> safely read and write
+vector types from memory aligned only to the base scalar type.</li>
+<li><strong>Enforce Buffer Alignment at the Host Level:</strong> When
+allocating host memory to bind to OpenCL buffers, align buffers to the
+maximum vector size expected (e.g., using <code>posix_memalign</code> or
+<code>_aligned_malloc</code> to 64- or 128-byte boundaries).</li>
+<li><strong>Use Structure Alignment Attributes:</strong> When passing
+custom structs to kernels, explicitly specify alignment using
+<code>__attribute__((aligned(X)))</code> to match the data layout
+expected by both the host compiler and the device compiler.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

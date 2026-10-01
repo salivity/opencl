@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Contexts Across Multi-Vendor GPUs - opencl</title>
+    <meta name="description" content="Creating a single OpenCL context spanning GPUs from different vendors—such as pairing an NVIDIA graphics card with an AMD or Intel GPU—is a common objective for heterogeneous computing. However, OpenCL's core architecture strictly prohibits devices f">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-contexts-across-multi-vendor-gp-us">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Contexts Across Multi-Vendor GPUs - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-contexts-across-multi-vendor-gp-us" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Creating a single OpenCL context spanning GPUs from different vendors—such as pairing an NVIDIA graphics card with an AMD or Intel GPU—is a common objective for heterogeneous computing. However, OpenCL's core architecture strictly prohibits devices f" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-contexts-across-multi-vendor-gpus">OpenCL Contexts Across
+Multi-Vendor GPUs</h1>
+<p>Creating a single OpenCL context spanning GPUs from different
+vendors—such as pairing an NVIDIA graphics card with an AMD or Intel
+GPU—is a common objective for heterogeneous computing. However, OpenCL's
+core architecture strictly prohibits devices from different vendor
+platforms from coexisting within a single context. When an application
+attempts this operation, the OpenCL runtime immediately fails, returning
+a runtime error. This article explains the technical mechanics behind
+why this failure occurs, the specific errors generated, and the
+industry-standard workaround for leveraging multi-vendor
+configurations.</p>
+<h3 id="the-opencl-architecture-and-platform-constraints">The OpenCL
+Architecture and Platform Constraints</h3>
+<p>The OpenCL framework relies on a strict hierarchical structure:
+<strong>Platform &gt; Context &gt; Devices &gt; Command
+Queues</strong>.</p>
+<ol type="1">
+<li><strong>Platforms (<code>cl_platform_id</code>):</strong> Each
+hardware vendor provides their own proprietary OpenCL implementation via
+an Installable Client Driver (ICD). For example, NVIDIA provides the
+NVIDIA OpenCL platform, and AMD provides the AMD Accelerated Parallel
+Processing platform.</li>
+<li><strong>Devices (<code>cl_device_id</code>):</strong> Physical
+devices belong entirely to the specific platform that exposed them.</li>
+<li><strong>Contexts (<code>cl_context</code>):</strong> A context
+manages shared virtual memory, program binaries, and command queues.
+Crucially, an OpenCL context is bound to a single OpenCL platform
+through the <code>CL_CONTEXT_PLATFORM</code> property.</li>
+</ol>
+<p>Because a context is bound to a single vendor's platform driver, the
+underlying platform driver must have direct knowledge of, and control
+over, all devices assigned to that context.</p>
+<h3 id="what-happens-during-clcreatecontext">What Happens During
+<code>clCreateContext</code></h3>
+<p>When an application calls <code>clCreateContext</code> with an array
+of <code>cl_device_id</code> handles originating from different
+platforms, the following sequence occurs:</p>
+<ol type="1">
+<li><strong>Parameter Validation:</strong> The target platform's driver
+evaluates the array of device IDs passed to the function.</li>
+<li><strong>Identification Failure:</strong> The platform driver can
+only validate device handles created by its own subsystem. When it
+encounters a device handle created by a rival vendor's platform, it
+fails to resolve the pointer or structure.</li>
+<li><strong>API Error Returned:</strong> The function returns
+<code>NULL</code> for the context and sets the error code to
+<code>CL_INVALID_DEVICE</code>.</li>
+<li><strong>Platform Fallback Behavior:</strong> If the application
+omits the <code>CL_CONTEXT_PLATFORM</code> property, the OpenCL ICD
+loader selects a default platform implementation. This selected platform
+will still fail validation against any device in the list not belonging
+to its own implementation, generating the same
+<code>CL_INVALID_DEVICE</code> failure.</li>
+</ol>
+<h3 id="why-contexts-cannot-span-vendors">Why Contexts Cannot Span
+Vendors</h3>
+<p>A single context across multiple vendors is fundamentally
+incompatible with how GPU runtimes operate:</p>
+<ul>
+<li><strong>Memory Management:</strong> Memory objects
+(<code>cl_mem</code>) are allocated inside a context and rely on the
+vendor's internal memory manager. NVIDIA's driver cannot allocate or
+track memory pages inside AMD's physical VRAM.</li>
+<li><strong>Unified Virtual Addressing:</strong> Cross-device pointer
+sharing inside a context requires unified driver control over the PCI
+Express address space.</li>
+<li><strong>Binary Distribution:</strong> Compiling an OpenCL program
+via <code>clCreateProgramWithSource</code> within a context assumes the
+context driver can invoke intermediate representations (such as SPIR-V
+or vendor-specific intermediate code) and assemble binaries for every
+targeted device. Different vendor compilers cannot be combined within a
+single platform's driver.</li>
+</ul>
+<h3 id="the-solution-multi-context-architecture">The Solution:
+Multi-Context Architecture</h3>
+<p>To use multi-vendor GPUs in the same system, the application must
+manage them via separate contexts:</p>
+<ol type="1">
+<li><strong>Enumerate All Platforms:</strong> Use
+<code>clGetPlatformIDs</code> to locate each vendor's platform
+independently.</li>
+<li><strong>Discover Devices Separately:</strong> Query devices
+(<code>clGetDeviceIDs</code>) for each individual platform.</li>
+<li><strong>Instantiate Multiple Contexts:</strong> Create one distinct
+<code>cl_context</code> per platform/vendor.</li>
+<li><strong>Handle Data Transfers via Host Memory:</strong> Because
+devices in different contexts cannot share OpenCL memory objects
+directly, data transfer between an NVIDIA GPU and an AMD GPU must be
+routed through shared host (CPU) system memory. Buffers are read back to
+host memory (or mapped via zero-copy pinned host buffers) and then
+written to the target context's device.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

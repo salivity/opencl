@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Why Avoid Blocking OpenCL Calls in Event Callbacks - opencl</title>
+    <meta name="description" content="Using blocking OpenCL API calls inside an event callback poses a severe architectural risk that can freeze an entire application. While OpenCL event callbacks (clSetEventCallback) provide an asynchronous mechanism to monitor command execution states, exe">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/why-avoid-blocking-open-cl-calls-in-event-callbacks">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Why Avoid Blocking OpenCL Calls in Event Callbacks - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/why-avoid-blocking-open-cl-calls-in-event-callbacks" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Using blocking OpenCL API calls inside an event callback poses a severe architectural risk that can freeze an entire application. While OpenCL event callbacks (clSetEventCallback) provide an asynchronous mechanism to monitor command execution states, exe" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="why-avoid-blocking-opencl-calls-in-event-callbacks">Why Avoid
+Blocking OpenCL Calls in Event Callbacks</h1>
+<p>Using blocking OpenCL API calls inside an event callback poses a
+severe architectural risk that can freeze an entire application. While
+OpenCL event callbacks (<code>clSetEventCallback</code>) provide an
+asynchronous mechanism to monitor command execution states, executing
+blocking commands—such as <code>clFinish</code>,
+<code>clWaitForEvents</code>, or blocking memory reads and writes—within
+these routines frequently leads to deadlocks, undefined behavior, and
+severe performance bottlenecks. Developers must avoid these operations
+to maintain runtime stability and ensure command queues progress without
+interruption.</p>
+<h3 id="the-deadlock-hazard">The Deadlock Hazard</h3>
+<p>The primary danger of issuing a blocking API call inside an event
+callback is mutual dependency, commonly resulting in a deadlock. OpenCL
+runtimes typically rely on dedicated internal driver threads to handle
+command queue execution, monitor hardware status, and fire event
+callbacks.</p>
+<p>When a callback issues a blocking call, it suspends the thread on
+which the callback is executing until the target operation completes. If
+the target operation requires progress from the same internal driver
+thread or relies on resources locked by that thread, neither operation
+can complete. The blocking call waits for the command to finish, while
+the command waits for the driver thread to be released, freezing the
+host application permanently.</p>
+<h3 id="opencl-specification-restrictions">OpenCL Specification
+Restrictions</h3>
+<p>The OpenCL specification explicitly warns against invoking blocking
+APIs inside callbacks. According to the specification, the behavior of
+calling any blocking OpenCL API or any API that enqueues commands to a
+command queue from inside an event callback is either undefined or
+strictly prohibited.</p>
+<p>Callbacks are executed asynchronously by the implementation, and the
+specification provides no guarantees about the execution context, thread
+safety, or re-entrancy of the runtime during callback execution. Relying
+on blocking functions violates these implementation assumptions and
+compromises cross-platform portability across different GPU and CPU
+vendors.</p>
+<h3 id="driver-pipeline-stalls">Driver Pipeline Stalls</h3>
+<p>Even when an implementation does not immediately deadlock, blocking
+inside a callback degrades system throughput. Driver-level event
+processing is designed to be lightweight and fast. Introducing
+synchronous delays holds internal driver resources, prevents other
+queued events from firing, and stalls the overall scheduling pipeline.
+This nullifies the performance benefits of asynchronous GPU
+execution.</p>
+<h3 id="recommended-alternatives">Recommended Alternatives</h3>
+<p>To handle post-execution logic safely without blocking:</p>
+<ul>
+<li><strong>Use Application-Level Signals:</strong> Use the callback
+only to signal a lightweight, non-blocking synchronization primitive,
+such as a native condition variable, an atomic flag, or a cross-thread
+message queue.</li>
+<li><strong>Delegate to Worker Threads:</strong> Offload subsequent
+OpenCL commands or blocking waits to an application-managed worker
+thread that runs independently of the OpenCL runtime's internal
+threads.</li>
+<li><strong>Chain Asynchronous Events:</strong> Rather than waiting
+synchronously to enqueue the next task, use OpenCL's native event wait
+lists (<code>event_wait_list</code>) to express dependencies directly to
+the command queue, allowing the runtime hardware scheduler to handle
+execution order automatically.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMD Wavefronts in OpenCL Work-Group Execution - opencl</title>
+    <meta name="description" content="In heterogeneous computing, mapping abstract software abstractions to physical hardware is essential for achieving optimal performance. In OpenCL, parallel computation is structured hierarchically into an NDRange containing work-groups, which in turn con">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/amd-wavefronts-in-open-cl-work-group-execution">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="AMD Wavefronts in OpenCL Work-Group Execution - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/amd-wavefronts-in-open-cl-work-group-execution" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In heterogeneous computing, mapping abstract software abstractions to physical hardware is essential for achieving optimal performance. In OpenCL, parallel computation is structured hierarchically into an NDRange containing work-groups, which in turn con" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="amd-wavefronts-in-opencl-work-group-execution">AMD Wavefronts in
+OpenCL Work-Group Execution</h1>
+<p>In heterogeneous computing, mapping abstract software abstractions to
+physical hardware is essential for achieving optimal performance. In
+OpenCL, parallel computation is structured hierarchically into an
+NDRange containing work-groups, which in turn consist of individual
+work-items. AMD hardware bridges this software model to physical silicon
+through a construct known as a wavefront. This article explains how
+AMD's wavefront functions as the hardware execution slice of an OpenCL
+work-group, detailing how work-items are grouped, scheduled, and
+executed across SIMD units.</p>
+<h2 id="the-opencl-hierarchy-vs-amd-hardware">The OpenCL Hierarchy vs.
+AMD Hardware</h2>
+<p>OpenCL defines a vendor-agnostic software model:</p>
+<ul>
+<li><strong>Work-item:</strong> The smallest unit of execution (a single
+thread).</li>
+<li><strong>Work-group:</strong> A collection of work-items that execute
+concurrently, share a common local memory space, and synchronize via
+barriers.</li>
+</ul>
+<p>AMD hardware does not execute an entire work-group as a single
+monolithic block. Instead, the hardware scheduler breaks down each
+work-group into discrete, fixed-size execution slices called
+<strong>wavefronts</strong>. A wavefront consists of a fixed number of
+work-items—historically 64 in Graphics Core Next (GCN) architectures,
+and either 32 or 64 in RDNA architectures (Wave32 and Wave64 modes).</p>
+<h2 id="wavefronts-as-work-group-slices">Wavefronts as Work-Group
+Slices</h2>
+<p>When an OpenCL kernel is queued for execution, the runtime assigns
+each work-group to a specific AMD Compute Unit (CU) or Workgroup
+Processor (WGP). Within that compute unit, the work-group is partitioned
+linearly along its local dimensions into wavefronts.</p>
+<p>For example, if an OpenCL work-group is configured with a size of 256
+work-items on a GPU using Wave64:</p>
+<ol type="1">
+<li>The hardware runtime divides the 256 work-items into four discrete
+wavefronts of 64 work-items each.</li>
+<li>Each wavefront is assigned a set of vector registers and execution
+slots on the Compute Unit's SIMD units.</li>
+<li>These four wavefronts represent the actual execution slices of the
+parent work-group.</li>
+</ol>
+<p>The wavefront is the fundamental unit of scheduling. The hardware's
+instruction issue logic tracks the program counter and state at the
+wavefront level, rather than tracking individual work-items.</p>
+<h2 id="simt-execution-and-lockstep-processing">SIMT Execution and
+Lockstep Processing</h2>
+<p>Wavefronts execute using a Single Instruction, Multiple Threads
+(SIMT) model. All work-items within a single wavefront execute the
+identical instruction simultaneously on physical vector ALUs.</p>
+<p>If code within a wavefront encounters divergent branching (such as an
+<code>if/else</code> condition where some work-items evaluate to true
+and others to false), the hardware does not execute branches in
+parallel. Instead, it serializes the execution paths. It executes the
+<code>if</code> block with a bitmask disabling the inactive lanes, and
+then executes the <code>else</code> block with an inverted bitmask.
+Because execution is tied to the wavefront slice, branching divergence
+inside a single wavefront reduces throughput, whereas divergence between
+separate wavefronts carries no performance penalty.</p>
+<h2 id="memory-and-synchronization-boundaries">Memory and
+Synchronization Boundaries</h2>
+<p>While the wavefront is the execution slice, the OpenCL work-group
+remains the boundary for memory and synchronization:</p>
+<ul>
+<li><strong>Local Memory (LDS):</strong> Local Data Share memory is
+allocated per work-group, allowing all constituent wavefronts within
+that work-group to exchange data.</li>
+<li><strong>Barriers:</strong> When an OpenCL kernel invokes
+<code>barrier(CLK_LOCAL_MEM_FENCE)</code>, execution pauses for each
+wavefront in the work-group until all wavefronts within that work-group
+reach the same synchronization point.</li>
+</ul>
+<p>Within a single wavefront, synchronization is implicit because
+work-items execute in lockstep. However, communication between different
+wavefronts inside the same work-group requires explicit barriers and
+local memory operations.</p>
+<h2 id="performance-implications">Performance Implications</h2>
+<p>Understanding the relationship between work-groups and wavefronts is
+critical for optimizing OpenCL performance on AMD GPUs:</p>
+<ul>
+<li><strong>Sizing Multiples:</strong> Work-group sizes should always be
+integer multiples of the target architecture's wavefront size (32 or
+64). If a work-group contains 70 work-items on a Wave64 architecture,
+the hardware must allocate two full wavefronts (128 lanes), leaving 58
+lanes inactive in the second wavefront, which wastes execution
+resources.</li>
+<li><strong>Occupancy:</strong> Compute units have limits on the total
+number of wavefronts they can track concurrently. Sizing work-groups to
+balance register usage and shared memory allocation allows the scheduler
+to interleave multiple wavefronts, hiding memory latency through
+hardware multithreading.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

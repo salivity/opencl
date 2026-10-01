@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Device-Side Enqueue for Iterative Solvers - opencl</title>
+    <meta name="description" content="Device-side enqueue, introduced in OpenCL 2.0, allows compute devices to launch kernels directly without host CPU intervention, fundamentally changing how iterative numerical solvers manage execution. In traditional pipelines, each solver iteration requi">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-device-side-enqueue-for-iterative-solvers">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Device-Side Enqueue for Iterative Solvers - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-device-side-enqueue-for-iterative-solvers" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Device-side enqueue, introduced in OpenCL 2.0, allows compute devices to launch kernels directly without host CPU intervention, fundamentally changing how iterative numerical solvers manage execution. In traditional pipelines, each solver iteration requi" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-device-side-enqueue-for-iterative-solvers">OpenCL
+Device-Side Enqueue for Iterative Solvers</h1>
+<p>Device-side enqueue, introduced in OpenCL 2.0, allows compute devices
+to launch kernels directly without host CPU intervention, fundamentally
+changing how iterative numerical solvers manage execution. In
+traditional pipelines, each solver iteration requires synchronization
+with the CPU to assess convergence and determine the next dispatch
+parameters, introducing severe latency bottlenecks. By offloading
+scheduling logic directly to the device, iterative solvers can
+dynamically adapt their execution grids, prune converged sub-domains,
+and distribute irregular computational workloads in real time with
+minimal overhead.</p>
+<p>In an iterative solver, such as a Conjugate Gradient, Jacobi, or
+Adaptive Mesh Refinement (AMR) system, computational density often
+shifts across domains as the simulation progresses. When using
+device-side enqueue, a parent kernel executes an iteration step or a
+coarse-grained evaluation phase. Instead of returning control to the
+host to check residual errors, the parent kernel reads the device memory
+directly to identify areas requiring further computation. Based on local
+error metrics or convergence criteria, the parent kernel calls
+<code>enqueue_kernel</code> to spawn specialized child kernels targeted
+specifically at unresolved regions.</p>
+<p>This autonomous dispatch mechanism dynamically adjusts work
+distribution in three primary ways:</p>
+<p><strong>1. Dynamic Grid Sizing and Sub-Domain Pruning</strong><br />
+Traditional static implementations must dispatch over the entire problem
+space for every iteration, wasting execution resources on threads that
+simply exit early because their local data has already converged. With
+device-side enqueue, parent threads evaluate local residual thresholds
+and dynamically compute the precise dimensions (<code>ndrange_t</code>)
+for the next iteration. Child kernels are only launched for active,
+unconverged cells or blocks, effectively concentrating the device's
+compute units where work is actually needed.</p>
+<p><strong>2. Hierarchical Load Balancing</strong><br />
+Iterative algorithms often encounter load imbalances when localized
+phenomena (such as shock fronts, crack propagation, or fluid turbulence)
+require higher precision or smaller time steps than the rest of the
+domain. Device-side enqueue enables a nested parallelism model. A
+high-level parent kernel processes macro-blocks, dynamically enqueuing
+fine-grained child kernels with variable local and global work-group
+sizes depending on the local complexity of each block. This prevents
+underutilization of compute units by dynamically matching the hardware
+dispatch size to the data complexity.</p>
+<p><strong>3. Elimination of Host-Device Latency</strong><br />
+In standard OpenCL architectures, issuing thousands of small, adaptive
+iterations incurs substantial PCIe transit and driver execution
+overhead. Device-side enqueue routes execution queues directly within
+device memory and internal scheduling hardware. The GPU or accelerator
+schedules child kernels as soon as execution resources become available,
+maintaining high occupancy on compute units and eliminating the latency
+tail that typically degrades performance in iterative solvers.</p>
+<p>By coupling execution decisions directly to data evaluation on the
+hardware, device-side enqueue transforms iterative OpenCL solvers from
+rigid, host-bound dispatch loops into adaptive, self-governing
+computational graphs.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What Distinguishes OpenCL Private and Local Memory? - opencl</title>
+    <meta name="description" content="The OpenCL memory architecture defines a hierarchical model designed to mirror heterogeneous computing hardware, where private memory and local memory serve distinct roles in data sharing, scope, and physical placement. While private memory provides non-">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/what-distinguishes-open-cl-private-and-local-memory">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="What Distinguishes OpenCL Private and Local Memory? - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/what-distinguishes-open-cl-private-and-local-memory" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The OpenCL memory architecture defines a hierarchical model designed to mirror heterogeneous computing hardware, where private memory and local memory serve distinct roles in data sharing, scope, and physical placement. While private memory provides non-" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="what-distinguishes-opencl-private-and-local-memory">What
+Distinguishes OpenCL Private and Local Memory?</h1>
+<p>The OpenCL memory architecture defines a hierarchical model designed
+to mirror heterogeneous computing hardware, where private memory and
+local memory serve distinct roles in data sharing, scope, and physical
+placement. While private memory provides non-shared, work-item-exclusive
+storage intended for thread-level scalar variables and register spills,
+local memory acts as an on-chip, explicitly managed scratchpad shared
+exclusively among all work-items within a single work-group.
+Understanding how OpenCL differentiates between these two
+tiers—specifically across scope, lifetime, allocation syntax,
+synchronization, and hardware mapping—is fundamental to writing correct
+and optimized parallel kernels.</p>
+<h2 id="scope-visibility-and-lifetime">Scope, Visibility, and
+Lifetime</h2>
+<p>The primary functional distinction between private memory and local
+memory lies in who can access the stored data and for how long that data
+persists.</p>
+<p>Private memory is strictly private to an individual work-item
+(thread). Variables residing in private memory cannot be read or
+modified by any other work-item, even if the threads belong to the exact
+same work-group or execute on the same compute unit. The lifetime of a
+private memory variable is bounded by the execution of that specific
+work-item.</p>
+<p>In contrast, local memory is shared across all work-items belonging
+to the same work-group. Any work-item in the group can read from and
+write to any location in that work-group's local memory segment.
+However, work-items belonging to separate work-groups cannot access each
+other's local memory. The lifetime of a local memory buffer corresponds
+to the execution lifetime of the enclosing work-group; once all
+work-items in the work-group complete execution, the local memory
+contents are deallocated.</p>
+<h2 id="declaration-and-allocation-syntax">Declaration and Allocation
+Syntax</h2>
+<p>OpenCL uses distinct address space qualifiers to instruct the
+compiler where to place data structures:</p>
+<ul>
+<li><strong>Private Memory Qualifier (<code>__private</code> or
+<code>private</code>):</strong> This is the default address space for
+any variable declared inside a kernel body if no qualifier is specified.
+Function parameters, loop counters, and standard local stack variables
+automatically map to private memory.</li>
+<li><strong>Local Memory Qualifier (<code>__local</code> or
+<code>local</code>):</strong> Variables residing in local memory must be
+explicitly annotated. They can be allocated statically inside the kernel
+function body or allocated dynamically on the host via the runtime API
+(passing <code>NULL</code> alongside the byte size to
+<code>clSetKernelArg</code>).</li>
+</ul>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> memory_example<span class="op">(</span>__global <span class="dt">const</span> <span class="dt">float</span><span class="op">*</span> input<span class="op">,</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>                             __global <span class="dt">float</span><span class="op">*</span> output<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>                             __local <span class="dt">float</span><span class="op">*</span> dynamic_shared_buf<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Stored in private memory: unique to each work-item</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> gid <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> lid <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> private_val <span class="op">=</span> input<span class="op">[</span>gid<span class="op">];</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Stored in local memory: shared among work-items in this work-group</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    __local <span class="dt">float</span> static_shared_buf<span class="op">[</span><span class="dv">256</span><span class="op">];</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    static_shared_buf<span class="op">[</span>lid<span class="op">]</span> <span class="op">=</span> private_val<span class="op">;</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Synchronize to ensure all writes to local memory are visible</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    output<span class="op">[</span>gid<span class="op">]</span> <span class="op">=</span> static_shared_buf<span class="op">[</span>lid<span class="op">];</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h2 id="synchronization-requirements">Synchronization Requirements</h2>
+<p>Because private memory is accessed exclusively by a single thread of
+execution, it requires no synchronization mechanisms. There are no data
+hazards between threads within private storage.</p>
+<p>Local memory, being concurrently accessible by dozens or hundreds of
+work-items within a work-group, is susceptible to race conditions.
+OpenCL requires explicit synchronization barriers—namely
+<code>barrier(CLK_LOCAL_MEM_FENCE)</code> or atomic operations within
+the local address space—to ensure that writes from one work-item become
+visible to other work-items before subsequent reads take place.</p>
+<h2 id="hardware-mapping-and-performance-characteristics">Hardware
+Mapping and Performance Characteristics</h2>
+<p>OpenCL's abstract memory model aligns closely with modern GPU and
+accelerator hardware:</p>
+<ul>
+<li><strong>Private Memory Implementation:</strong> Compilers typically
+attempt to map private variables directly into high-speed physical
+register files. When the private memory demand per thread exceeds the
+available register budget (register pressure), the compiler spills
+excess variables into device global DRAM (off-chip memory), which
+introduces latency penalties.</li>
+<li><strong>Local Memory Implementation:</strong> On modern GPUs, local
+memory corresponds directly to dedicated on-chip SRAM (frequently
+referred to as Shared Memory in NVIDIA architectures or Local Data Share
+/ LDS in AMD architectures). Because it resides physically on the
+compute unit, local memory offers orders of magnitude lower latency and
+higher bandwidth than global memory, provided bank conflicts are
+avoided.</li>
+</ul>
+<h2 id="summary-comparison">Summary Comparison</h2>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Private Memory</th>
+<th>Local Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Qualifier</strong></td>
+<td><code>__private</code> or default</td>
+<td><code>__local</code></td>
+</tr>
+<tr>
+<td><strong>Visibility</strong></td>
+<td>Single work-item</td>
+<td>All work-items in the work-group</td>
+</tr>
+<tr>
+<td><strong>Lifetime</strong></td>
+<td>Duration of work-item</td>
+<td>Duration of work-group</td>
+</tr>
+<tr>
+<td><strong>Synchronization</strong></td>
+<td>None required</td>
+<td>Requires barriers (<code>CLK_LOCAL_MEM_FENCE</code>)</td>
+</tr>
+<tr>
+<td><strong>Hardware Mapping</strong></td>
+<td>Registers (spills to DRAM)</td>
+<td>On-chip SRAM (Shared Memory / LDS)</td>
+</tr>
+<tr>
+<td><strong>Primary Use Case</strong></td>
+<td>Intermediate calculation values, counters</td>
+<td>Collaborative reduction, caching tile data</td>
+</tr>
+</tbody>
+</table></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

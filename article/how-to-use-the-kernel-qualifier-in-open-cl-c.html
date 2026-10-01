@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Use the __kernel Qualifier in OpenCL C - opencl</title>
+    <meta name="description" content="The kernel qualifier in OpenCL C identifies a function as an entry point intended to be executed on an OpenCL device from a host application. This article provides a concise overview of how kernel is applied, the syntax requirements governing its use, th">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-to-use-the-kernel-qualifier-in-open-cl-c">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How to Use the __kernel Qualifier in OpenCL C - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-to-use-the-kernel-qualifier-in-open-cl-c" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The kernel qualifier in OpenCL C identifies a function as an entry point intended to be executed on an OpenCL device from a host application. This article provides a concise overview of how kernel is applied, the syntax requirements governing its use, th" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-to-use-the-__kernel-qualifier-in-opencl-c">How to Use the
+__kernel Qualifier in OpenCL C</h1>
+<p>The <code>__kernel</code> qualifier in OpenCL C identifies a function
+as an entry point intended to be executed on an OpenCL device from a
+host application. This article provides a concise overview of how
+<code>__kernel</code> is applied, the syntax requirements governing its
+use, the fundamental restrictions imposed on kernel functions, and how
+they differ from standard helper functions within an OpenCL program.</p>
+<h2 id="defining-a-kernel-function">Defining a Kernel Function</h2>
+<p>In OpenCL C, the <code>__kernel</code> qualifier (or its shorthand
+equivalent, <code>kernel</code>) is placed immediately before the
+function's return type. It signals to the OpenCL compiler that this
+function can be queued for execution on a compute device using host-side
+APIs such as <code>clEnqueueNDRangeKernel</code>.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> vector_add<span class="op">(</span>__global <span class="dt">const</span> <span class="dt">float</span> <span class="op">*</span>a<span class="op">,</span> </span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>                         __global <span class="dt">const</span> <span class="dt">float</span> <span class="op">*</span>b<span class="op">,</span> </span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>                         __global <span class="dt">float</span> <span class="op">*</span>result<span class="op">)</span> </span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> id <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    result<span class="op">[</span>id<span class="op">]</span> <span class="op">=</span> a<span class="op">[</span>id<span class="op">]</span> <span class="op">+</span> b<span class="op">[</span>id<span class="op">];</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h2 id="mandatory-rules-and-restrictions">Mandatory Rules and
+Restrictions</h2>
+<p>When declaring and defining functions with <code>__kernel</code>, the
+OpenCL C specification enforces several strict rules:</p>
+<ul>
+<li><strong>Return Type Must Be <code>void</code>:</strong> A kernel
+function cannot return a value. Any output produced by the kernel must
+be written to memory passed via pointer arguments.</li>
+<li><strong>Host-Only Invocation:</strong> Functions declared with
+<code>__kernel</code> can only be invoked by the host program. A kernel
+function cannot call another kernel function within the device
+code.</li>
+<li><strong>Pointer Argument Address Spaces:</strong> Any pointer passed
+as an argument to a kernel function must be explicitly qualified with an
+address space: <code>__global</code>, <code>__local</code>, or
+<code>__constant</code>. Pointer arguments cannot point to the
+<code>__private</code> address space.</li>
+<li><strong>Non-Pointer Arguments:</strong> Scalar or vector values
+passed by value are allocated in the private address space by default
+and do not require an address space qualifier.</li>
+<li><strong>No Variable Argument Lists:</strong> Kernel functions cannot
+use variadic arguments (<code>...</code>).</li>
+</ul>
+<h2 id="kernel-functions-vs-helper-functions">Kernel Functions vs.
+Helper Functions</h2>
+<p>OpenCL C allows standard C-style functions to be defined alongside
+kernels to act as helper or utility routines:</p>
+<ul>
+<li><strong>Kernels (<code>__kernel</code>):</strong> Visible to the
+host, directly scheduled for parallel execution, must return
+<code>void</code>, and serve as the root of the device-side execution
+tree.</li>
+<li><strong>Helper Functions (No <code>__kernel</code>):</strong>
+Callable only by kernels or other helper functions on the device. They
+can return concrete data types (such as <code>int</code>,
+<code>float</code>, or custom structures) and are often inlined by the
+OpenCL compiler for performance optimization.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Barrier Synchronization Memory Flags - opencl</title>
+    <meta name="description" content="This article provides an overview of the memory flags used to control memory synchronization when executing an OpenCL barrier. In OpenCL, execution barriers halt work-items within a work-group until all items reach the synchronization point. Passing spec">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-barrier-synchronization-memory-flags">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Barrier Synchronization Memory Flags - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-barrier-synchronization-memory-flags" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article provides an overview of the memory flags used to control memory synchronization when executing an OpenCL barrier. In OpenCL, execution barriers halt work-items within a work-group until all items reach the synchronization point. Passing spec" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-barrier-synchronization-memory-flags">OpenCL Barrier
+Synchronization Memory Flags</h1>
+<p>This article provides an overview of the memory flags used to control
+memory synchronization when executing an OpenCL barrier. In OpenCL,
+execution barriers halt work-items within a work-group until all items
+reach the synchronization point. Passing specific memory fence flags to
+these barriers dictates whether cached or queued reads and writes in
+local, global, or image memory spaces become visible to other work-items
+before execution resumes.</p>
+<h2 id="primary-memory-fence-flags-for-barrier">Primary Memory Fence
+Flags for <code>barrier()</code></h2>
+<p>In OpenCL 1.x and OpenCL 2.x/3.0, the traditional
+<code>barrier()</code> function takes a bitfield parameter of type
+<code>cl_mem_fence_flags</code>. These flags define which memory
+hierarchies must complete pending operations before any work-item
+continues past the barrier.</p>
+<h3 id="1-clk_local_mem_fence">1. <code>CLK_LOCAL_MEM_FENCE</code></h3>
+<p>The <code>CLK_LOCAL_MEM_FENCE</code> flag ensures that all reads and
+writes to local memory (<code>__local</code> address space) issued by
+any work-item in the work-group before the barrier are fully committed
+and visible to all other work-items in the same work-group.</p>
+<ul>
+<li><strong>Use case:</strong> Staging data in shared local memory
+(scratchpad memory) before reading it collaboratively across the
+work-group.</li>
+</ul>
+<h3 id="2-clk_global_mem_fence">2.
+<code>CLK_GLOBAL_MEM_FENCE</code></h3>
+<p>The <code>CLK_GLOBAL_MEM_FENCE</code> flag ensures that all reads and
+writes to global memory (<code>__global</code> address space) made by
+work-items in the work-group prior to the barrier are committed and
+visible across the work-group.</p>
+<ul>
+<li><strong>Use case:</strong> Ordering writes to global buffers between
+execution phases without ending the kernel launch. Note that while this
+ensures visibility within the current work-group, it does not guarantee
+global visibility across <em>different</em> work-groups.</li>
+</ul>
+<h3 id="3-combining-flags-clk_local_mem_fence--clk_global_mem_fence">3.
+Combining Flags
+(<code>CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE</code>)</h3>
+<p>Flags can be combined using a bitwise OR operation. Supplying both
+flags forces the synchronization of both local memory buffers and global
+device memory simultaneously before any work-item passes the
+barrier.</p>
+<hr />
+<h2 id="opencl-20-extended-memory-flags-and-scopes">OpenCL 2.0+ Extended
+Memory Flags and Scopes</h2>
+<p>Starting with OpenCL 2.0, the API introduced
+<code>work_group_barrier()</code> and fine-grained memory models,
+offering additional flags and explicit memory scopes.</p>
+<h3 id="additional-fence-flag-clk_image_mem_fence">Additional Fence
+Flag: <code>CLK_IMAGE_MEM_FENCE</code></h3>
+<p>OpenCL 2.0 added the <code>CLK_IMAGE_MEM_FENCE</code> flag. When
+passed to a barrier, it guarantees that reads and writes targeting image
+objects complete and become visible to other work-items.</p>
+<h3 id="memory-scope-modifiers-memory_scope">Memory Scope Modifiers
+(<code>memory_scope</code>)</h3>
+<p>While the memory flags specify <em>what</em> memory is synchronized,
+OpenCL 2.0+ introduces memory scopes to control <em>who</em>
+participates in the visibility of the barrier:</p>
+<ul>
+<li><strong><code>memory_scope_work_item</code>:</strong> Synchronizes
+operations locally for the calling thread only.</li>
+<li><strong><code>memory_scope_sub_group</code>:</strong> Limits
+synchronization visibility to the work-items within the immediate
+sub-group (hardware warp or wavefront).</li>
+<li><strong><code>memory_scope_work_group</code>:</strong> The default
+scope behavior, synchronizing visibility across all work-items inside
+the work-group.</li>
+<li><strong><code>memory_scope_device</code>:</strong> Extends
+visibility across all work-items running on the entire compute
+device.</li>
+<li><strong><code>memory_scope_all_svm_devices</code>:</strong> Extends
+visibility across multiple devices sharing Shared Virtual Memory
+(SVM).</li>
+</ul>
+<hr />
+<h2 id="execution-rules-and-best-practices">Execution Rules and Best
+Practices</h2>
+<ul>
+<li><strong>Uniform Execution:</strong> Every work-item in a work-group
+must execute the barrier. Placing a barrier inside conditional branches
+(<code>if</code>/<code>else</code>) that diverge within a work-group
+results in undefined behavior or hardware deadlocks.</li>
+<li><strong>Cost Management:</strong> Using
+<code>CLK_GLOBAL_MEM_FENCE</code> generally incurs a higher hardware
+latency cost than <code>CLK_LOCAL_MEM_FENCE</code>, as global memory
+accesses often require flushing cache lines to device RAM. Only specify
+the flags strictly required by your algorithm's data dependencies.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What Is the OpenCL ICD Loader? - opencl</title>
+    <meta name="description" content="The OpenCL Installable Client Driver (ICD) loader serves as a universal intermediary between OpenCL applications and hardware-specific runtime implementations. In heterogeneous computing environments, a single system often hosts accelerators from multipl">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/what-is-the-open-cl-icd-loader">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="What Is the OpenCL ICD Loader? - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/what-is-the-open-cl-icd-loader" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The OpenCL Installable Client Driver (ICD) loader serves as a universal intermediary between OpenCL applications and hardware-specific runtime implementations. In heterogeneous computing environments, a single system often hosts accelerators from multipl" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="what-is-the-opencl-icd-loader">What Is the OpenCL ICD
+Loader?</h1>
+<p>The OpenCL Installable Client Driver (ICD) loader serves as a
+universal intermediary between OpenCL applications and hardware-specific
+runtime implementations. In heterogeneous computing environments, a
+single system often hosts accelerators from multiple vendors—such as
+CPUs, discrete GPUs, and specialized processors. Instead of forcing
+developers to compile separate binaries for each hardware provider, the
+ICD loader dynamically enumerates all installed vendor runtimes and
+routes API calls to the appropriate driver at runtime. This article
+examines the architectural role of the OpenCL ICD loader, how it
+discovers vendor drivers, and why it is essential for portable,
+cross-platform parallel computing.</p>
+<h2 id="the-problem-of-multi-vendor-hardware">The Problem of
+Multi-Vendor Hardware</h2>
+<p>OpenCL is designed to provide an open, royalty-free standard for
+cross-platform parallel programming. However, hardware vendors like
+Intel, AMD, NVIDIA, and ARM create their own proprietary drivers to
+implement the OpenCL specification for their respective
+architectures.</p>
+<p>Without a unified mechanism, an application compiled against one
+vendor's OpenCL runtime library would be bound strictly to that specific
+implementation. If an application linked directly against a specific
+vendor library, running on a system with a different vendor's GPU—or a
+system containing hardware from multiple vendors simultaneously—would
+require custom compilation flags, complex dynamic loading routines, or
+multiple software builds. The ICD architecture resolves this
+fragmentation.</p>
+<h2 id="how-the-icd-loader-discovers-platforms">How the ICD Loader
+Discovers Platforms</h2>
+<p>The ICD loader functions as a shared library (<code>OpenCL.dll</code>
+on Windows, <code>libOpenCL.so</code> on Linux) that applications link
+against during development. When an OpenCL application initializes by
+requesting platform information, the ICD loader scans the host operating
+system to discover which hardware drivers are registered.</p>
+<p>On Linux and Unix-like platforms, the loader inspects the
+<code>/etc/OpenCL/vendors/</code> directory for text files ending in
+<code>.icd</code>. Each <code>.icd</code> file contains the path to a
+shared library implementing that vendor's OpenCL runtime. On Windows,
+the loader queries dedicated registry keys (such as
+<code>HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\OpenCL\Vendors</code>) where
+vendor installations register the paths to their dynamic link
+libraries.</p>
+<p>Once these paths are parsed, the ICD loader loads each vendor library
+into the application's process memory and queries their supported
+platforms and devices.</p>
+<h2 id="function-dispatch-and-execution">Function Dispatch and
+Execution</h2>
+<p>After discovering available platforms, the ICD loader manages the
+execution of OpenCL commands via dispatch tables. The loader exposes
+standard OpenCL API functions—such as memory allocation, kernel
+compilation, and command queue execution—and delegates them to the
+corresponding driver.</p>
+<ol type="1">
+<li><strong>Platform Selection:</strong> When an application queries
+available platforms using <code>clGetPlatformIDs</code>, the ICD loader
+returns an array representing every discovered vendor runtime.</li>
+<li><strong>Handle Tagging:</strong> Internal OpenCL objects (such as
+contexts, command queues, and memory buffers) contain pointers back to
+dispatch tables provided by the responsible vendor driver.</li>
+<li><strong>Call Forwarding:</strong> When an application invokes an
+OpenCL function on a specific object, the ICD loader looks up the target
+implementation in that object's dispatch table and redirects the call
+directly to the vendor's driver with minimal CPU overhead.</li>
+</ol>
+<h2 id="benefits-to-developers-and-end-users">Benefits to Developers and
+End Users</h2>
+<p>The ICD loader decouples the application binary from the physical
+hardware stack. Developers distribute a single executable linked to the
+standard Khronos ICD loader rather than managing custom driver bindings.
+End users can install drivers from multiple component manufacturers
+simultaneously without runtime conflicts, allowing applications to
+orchestrate workloads across diverse computing devices across the entire
+system.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

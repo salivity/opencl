@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Create an OpenCL Context Using clCreateContext - opencl</title>
+    <meta name="description" content="Creating a valid OpenCL context using clCreateContext is a foundational step in GPU and heterogeneous computing, enabling the management of command queues, memory objects, and program builds across target hardware. This guide details the essential steps">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-to-create-an-open-cl-context-using-cl-create-context">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How to Create an OpenCL Context Using clCreateContext - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-to-create-an-open-cl-context-using-cl-create-context" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Creating a valid OpenCL context using clCreateContext is a foundational step in GPU and heterogeneous computing, enabling the management of command queues, memory objects, and program builds across target hardware. This guide details the essential steps" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-to-create-an-opencl-context-using-clcreatecontext">How to
+Create an OpenCL Context Using clCreateContext</h1>
+<p>Creating a valid OpenCL context using <code>clCreateContext</code> is
+a foundational step in GPU and heterogeneous computing, enabling the
+management of command queues, memory objects, and program builds across
+target hardware. This guide details the essential steps required to
+configure and invoke the function, which include querying available
+platforms, selecting appropriate devices, defining context properties,
+implementing callback handlers, and verifying the creation status to
+ensure safe execution.</p>
+<h3 id="step-1-query-available-platforms">Step 1: Query Available
+Platforms</h3>
+<p>OpenCL functions are organized under platform instances representing
+distinct vendor implementations (such as NVIDIA, AMD, or Intel). Before
+creating a context, you must discover at least one valid platform.</p>
+<ol type="1">
+<li>Call <code>clGetPlatformIDs</code> with a <code>NULL</code> platform
+pointer to determine the number of available platforms.</li>
+<li>Allocate storage and call <code>clGetPlatformIDs</code> again to
+retrieve the platform handles (<code>cl_platform_id</code>).</li>
+</ol>
+<h3 id="step-2-retrieve-target-devices">Step 2: Retrieve Target
+Devices</h3>
+<p>An OpenCL context must be associated with one or more physical
+devices tied to the selected platform.</p>
+<ol type="1">
+<li>Select a platform from the retrieved list.</li>
+<li>Call <code>clGetDeviceIDs</code>, specifying the target device type
+(e.g., <code>CL_DEVICE_TYPE_GPU</code> or
+<code>CL_DEVICE_TYPE_CPU</code>).</li>
+<li>Store the resulting <code>cl_device_id</code> handles in an
+array.</li>
+</ol>
+<h3 id="step-3-define-context-properties">Step 3: Define Context
+Properties</h3>
+<p>Context properties configure the runtime behavior and explicitly link
+the context to a specific platform.</p>
+<ol type="1">
+<li>Create an array of type <code>cl_context_properties</code>.</li>
+<li>Populate the array with key-value pairs, minimally specifying the
+platform:
+<ul>
+<li>Key: <code>CL_CONTEXT_PLATFORM</code></li>
+<li>Value: Cast of the selected <code>cl_platform_id</code></li>
+</ul></li>
+<li>Terminate the property list with a trailing <code>0</code> (null
+terminator). While passing <code>NULL</code> for properties is permitted
+by the OpenCL specification, explicitly defining the platform prevents
+undefined behavior across multi-vendor systems.</li>
+</ol>
+<h3 id="step-4-define-a-notification-callback-recommended">Step 4:
+Define a Notification Callback (Recommended)</h3>
+<p><code>clCreateContext</code> accepts an optional callback function to
+report asynchronous runtime errors.</p>
+<ul>
+<li>Signature:
+<code>void (CL_CALLBACK *pfn_notify)(const char *errinfo, const void *private_info, size_t cb, void *user_data)</code></li>
+<li>Implementing this function aids in debugging errors that occur
+within the context during execution. If omitted, pass
+<code>NULL</code>.</li>
+</ul>
+<h3 id="step-5-invoke-clcreatecontext">Step 5: Invoke
+<code>clCreateContext</code></h3>
+<p>Call <code>clCreateContext</code> using the gathered parameters. The
+function signature is:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_context clCreateContext<span class="op">(</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> cl_context_properties <span class="op">*</span>properties<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    cl_uint num_devices<span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> cl_device_id <span class="op">*</span>devices<span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> <span class="op">(</span>CL_CALLBACK <span class="op">*</span>pfn_notify<span class="op">)(</span><span class="dt">const</span> <span class="dt">char</span> <span class="op">*,</span> <span class="dt">const</span> <span class="dt">void</span> <span class="op">*,</span> <span class="dt">size_t</span><span class="op">,</span> <span class="dt">void</span> <span class="op">*),</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> <span class="op">*</span>user_data<span class="op">,</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    cl_int <span class="op">*</span>errcode_ret</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<ul>
+<li><strong><code>properties</code></strong>: Pointer to the property
+list defined in Step 3.</li>
+<li><strong><code>num_devices</code></strong>: The count of devices in
+your device array.</li>
+<li><strong><code>devices</code></strong>: Pointer to the array of
+<code>cl_device_id</code> handles retrieved in Step 2.</li>
+<li><strong><code>pfn_notify</code></strong>: The error callback
+function pointer, or <code>NULL</code>.</li>
+<li><strong><code>user_data</code></strong>: Pointer to custom data
+passed to the callback, or <code>NULL</code>.</li>
+<li><strong><code>errcode_ret</code></strong>: Pointer to a
+<code>cl_int</code> variable that receives the error code.</li>
+</ul>
+<h3 id="step-6-verify-context-creation">Step 6: Verify Context
+Creation</h3>
+<p>Check the return values immediately after execution:</p>
+<ol type="1">
+<li>Inspect <code>errcode_ret</code>. It must equal
+<code>CL_SUCCESS</code> (value <code>0</code>).</li>
+<li>Verify that the returned <code>cl_context</code> handle is not
+<code>NULL</code>.</li>
+</ol>
+<p>If an error code such as <code>CL_INVALID_PLATFORM</code>,
+<code>CL_INVALID_DEVICE</code>, or <code>CL_DEVICE_NOT_AVAILABLE</code>
+is returned, the context creation failed, and the handle must not be
+used for subsequent API calls. Once finished with the context in your
+application, release it using <code>clReleaseContext</code>.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

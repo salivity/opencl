@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handling Out-of-Bounds Image Reads in OpenCL - opencl</title>
+    <meta name="description" content="In OpenCL, reading pixels outside the allocated dimensions of an image is managed deterministically through sampler addressing modes rather than triggering hardware memory faults or undefined crashes. By configuring a sampler object with a specified addr">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/handling-out-of-bounds-image-reads-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Handling Out-of-Bounds Image Reads in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/handling-out-of-bounds-image-reads-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, reading pixels outside the allocated dimensions of an image is managed deterministically through sampler addressing modes rather than triggering hardware memory faults or undefined crashes. By configuring a sampler object with a specified addr" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="handling-out-of-bounds-image-reads-in-opencl">Handling
+Out-of-Bounds Image Reads in OpenCL</h1>
+<p>In OpenCL, reading pixels outside the allocated dimensions of an
+image is managed deterministically through sampler addressing modes
+rather than triggering hardware memory faults or undefined crashes. By
+configuring a sampler object with a specified addressing mode,
+developers instruct the OpenCL runtime and underlying GPU texture
+hardware on precisely how to extrapolate or restrict coordinate data.
+This article explains how OpenCL addresses these boundary conditions,
+details the available addressing modes, and outlines how coordinate
+normalization affects boundary behavior.</p>
+<h3 id="the-role-of-the-sampler">The Role of the Sampler</h3>
+<p>Image reads in OpenCL kernels typically rely on built-in read
+functions (such as <code>read_imagef</code>, <code>read_imagei</code>,
+or <code>read_imageui</code>) combined with a sampler
+(<code>sampler_t</code>). The sampler defines how coordinates are
+interpreted, how filtering is applied, and how boundary conditions are
+addressed.</p>
+<p>When a kernel attempts to sample coordinates outside the valid range
+<code>[0, width - 1]</code> or <code>[0, height - 1]</code>, the
+sampler’s addressing mode controls the return value, removing the need
+for manual conditional branching (e.g., <code>if-else</code> bounds
+checks) inside kernel execution paths.</p>
+<h3 id="opencl-addressing-modes">OpenCL Addressing Modes</h3>
+<p>OpenCL provides five distinct addressing modes defined in the OpenCL
+C specification to handle boundary conditions:</p>
+<ul>
+<li><strong><code>CLK_ADDRESS_CLAMP_TO_EDGE</code></strong>:
+Out-of-range coordinates are clamped to the nearest edge of the image.
+Any read beyond the boundary returns the color of the pixel located at
+the closest valid image border. This mode is widely used in convolution
+filters and blurs to prevent dark borders from creeping into the
+filtered output.</li>
+<li><strong><code>CLK_ADDRESS_CLAMP</code></strong>: Coordinates outside
+the valid image range return a predefined border color. If the image
+channel order contains an alpha channel, the returned color is typically
+<code>(0.0, 0.0, 0.0, 0.0)</code> for floating-point formats or
+<code>(0, 0, 0, 0)</code> for integer formats. If no alpha channel
+exists, the alpha component defaults to <code>1.0</code> (or
+<code>1</code>).</li>
+<li><strong><code>CLK_ADDRESS_REPEAT</code></strong>: Coordinates wrap
+around cyclically. For example, sampling past the right boundary wraps
+back around to the left boundary. This mode is useful for generating
+seamless, repeating textures, but it is valid only when using normalized
+coordinates.</li>
+<li><strong><code>CLK_ADDRESS_MIRRORED_REPEAT</code></strong>:
+Coordinates reflect across boundaries like a mirror. Once an edge is
+reached, the sampling direction reverses back into the image. Like
+<code>CLK_ADDRESS_REPEAT</code>, this mode is strictly valid only when
+normalized coordinates are enabled.</li>
+<li><strong><code>CLK_ADDRESS_NONE</code></strong>: Out-of-bounds
+behavior is explicitly left undefined. The OpenCL implementation is not
+required to apply clamping, wrapping, or bounds checking. This mode
+yields the highest performance because it minimizes hardware overhead,
+but the developer must guarantee that all generated coordinates remain
+strictly within the image boundaries.</li>
+</ul>
+<h3 id="coordinate-systems-normalized-vs-unnormalized">Coordinate
+Systems: Normalized vs. Unnormalized</h3>
+<p>OpenCL supports both unnormalized coordinates (direct pixel indices
+ranging from <code>0</code> to <code>dimension - 1</code>) and
+normalized coordinates (floating-point values ranging from
+<code>0.0</code> to <code>1.0</code>).</p>
+<p>The choice of coordinate system directly restricts the applicable
+addressing modes:</p>
+<ul>
+<li><strong>Unnormalized coordinates</strong> can only use
+<code>CLK_ADDRESS_CLAMP_TO_EDGE</code>, <code>CLK_ADDRESS_CLAMP</code>,
+or <code>CLK_ADDRESS_NONE</code>. Attempting to use
+<code>CLK_ADDRESS_REPEAT</code> or
+<code>CLK_ADDRESS_MIRRORED_REPEAT</code> with unnormalized coordinates
+is invalid and results in implementation-defined behavior or compilation
+errors.</li>
+<li><strong>Normalized coordinates</strong> support all five addressing
+modes.</li>
+</ul>
+<h3 id="hardware-acceleration-and-efficiency">Hardware Acceleration and
+Efficiency</h3>
+<p>Because OpenCL maps image operations to dedicated GPU texture-mapping
+units (TMUs), boundary handling is usually executed directly in silicon.
+Hardware boundary clamping and coordinate wrapping operate with zero
+instruction overhead inside the compute units, providing a performance
+advantage over manual boundary logic implemented in software
+buffers.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

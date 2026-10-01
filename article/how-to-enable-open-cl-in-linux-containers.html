@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Enable OpenCL in Linux Containers - opencl</title>
+    <meta name="description" content="Enabling OpenCL hardware acceleration inside Linux containers requires granting container processes access to host GPU device nodes, mounting userspace drivers, and configuring specific runtime environment variables. Depending on whether your hardware is">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-to-enable-open-cl-in-linux-containers">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How to Enable OpenCL in Linux Containers - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-to-enable-open-cl-in-linux-containers" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Enabling OpenCL hardware acceleration inside Linux containers requires granting container processes access to host GPU device nodes, mounting userspace drivers, and configuring specific runtime environment variables. Depending on whether your hardware is" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-to-enable-opencl-in-linux-containers">How to Enable OpenCL
+in Linux Containers</h1>
+<p>Enabling OpenCL hardware acceleration inside Linux containers
+requires granting container processes access to host GPU device nodes,
+mounting userspace drivers, and configuring specific runtime environment
+variables. Depending on whether your hardware is Intel, AMD, or NVIDIA,
+you must pass interfaces such as <code>/dev/dri</code> and
+<code>/dev/kfd</code> alongside flags that register OpenCL Installable
+Client Drivers (ICD). This guide details the mandatory device nodes,
+permission settings, and environment variables needed to execute OpenCL
+workloads within Docker and Podman environments.</p>
+<h2 id="essential-device-nodes">Essential Device Nodes</h2>
+<p>Containers share the host kernel, meaning GPU acceleration requires
+exposing host kernel-mode driver character devices into the container
+namespace.</p>
+<h3 id="devdri-direct-rendering-infrastructure"><code>/dev/dri</code>
+(Direct Rendering Infrastructure)</h3>
+<p>The <code>/dev/dri</code> directory is essential for Intel and AMD
+graphics, as well as generic Linux Direct Rendering Manager (DRM)
+compute interfaces. It typically contains two types of device files:</p>
+<ul>
+<li><code>cardX</code> (e.g., <code>/dev/dri/card0</code>): Primary node
+responsible for modesetting and display output.</li>
+<li><code>renderD128</code> (and subsequent numbers): Render nodes
+dedicated to unprivileged, display-free execution. OpenCL compute
+runtimes primarily rely on these nodes to submit compute queues without
+requiring an active X11 or Wayland session.</li>
+</ul>
+<p>To pass this interface into a container:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">--device</span> /dev/dri</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Or targeting only the render node:</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">--device</span> /dev/dri/renderD128:/dev/dri/renderD128</span></code></pre></div>
+<h3 id="devkfd-kernel-fusion-driver"><code>/dev/kfd</code> (Kernel
+Fusion Driver)</h3>
+<p>The <code>/dev/kfd</code> node is required specifically for AMD
+hardware utilizing the ROCm (Radeon Open Compute) runtime. While AMD
+drivers interact with <code>/dev/dri</code> for memory management and
+DRM integration, the Kernel Fusion Driver handles user-mode compute
+queues, signal handling, and heterogeneous system architecture (HSA)
+operations.</p>
+<p>For AMD ROCm-based OpenCL, you must expose both <code>/dev/kfd</code>
+and <code>/dev/dri</code>:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">--device</span> /dev/kfd <span class="at">--device</span> /dev/dri</span></code></pre></div>
+<h2 id="permissions-and-linux-user-groups">Permissions and Linux User
+Groups</h2>
+<p>Inside the host, device nodes under <code>/dev/dri</code> and
+<code>/dev/kfd</code> belong to privileged system groups—typically
+<code>render</code> or <code>video</code>. If the container runs as a
+non-root user, the container user must be mapped to matching group IDs
+to prevent <code>EACCES</code> (Permission Denied) errors.</p>
+<ul>
+<li><strong>Host Group Detection:</strong> Find the GIDs on your host
+system:
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">getent</span> group render <span class="kw">|</span> <span class="fu">cut</span> <span class="at">-d:</span> <span class="at">-f3</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">getent</span> group video <span class="kw">|</span> <span class="fu">cut</span> <span class="at">-d:</span> <span class="at">-f3</span></span></code></pre></div></li>
+<li><strong>Container Attachment:</strong> Pass the detected groups to
+the container runtime:
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">--group-add</span> video</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">--group-add</span> render</span></code></pre></div></li>
+</ul>
+<h2 id="crucial-environment-variables">Crucial Environment
+Variables</h2>
+<p>Environment variables govern OpenCL ICD selection, visibility, and
+platform-specific capabilities inside the container.</p>
+<h3 id="1-general-opencl-environment-variables">1. General OpenCL
+Environment Variables</h3>
+<p>The OpenCL standard uses an ICD loader (<code>libOpenCL.so</code>) to
+enumerate and dispatch calls to vendor-specific runtimes listed in
+<code>.icd</code> text files.</p>
+<ul>
+<li><code>OCL_ICD_VENDORS</code>: Overrides the default search path
+(<code>/etc/OpenCL/vendors</code>) for OpenCL ICD registration files.
+Set this if your ICD files are mounted in a non-standard container
+location:
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">-e</span> OCL_ICD_VENDORS=/opt/OpenCL/vendors</span></code></pre></div></li>
+<li><code>OPENCL_VENDOR_PATH</code>: Used by alternative loader
+implementations to discover <code>.icd</code> files:
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">-e</span> OPENCL_VENDOR_PATH=/etc/OpenCL/vendors</span></code></pre></div></li>
+</ul>
+<h3 id="2-amd-rocm-environment-variables">2. AMD ROCm Environment
+Variables</h3>
+<p>For AMD hardware utilizing the ROCm OpenCL stack, several environment
+variables control hardware selection and runtime constraints:</p>
+<ul>
+<li><code>ROCR_VISIBLE_DEVICES</code>: Limits OpenCL execution to
+specific GPU IDs (e.g., <code>0</code>, <code>1</code>, or
+comma-separated indices).
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">-e</span> ROCR_VISIBLE_DEVICES=0</span></code></pre></div></li>
+<li><code>GPU_DEVICE_ORDINAL</code>: Legacy variable used by AMD runtime
+engines to target specific cards.</li>
+<li><code>HSA_OVERRIDE_GFX_VERSION</code>: Useful when using consumer
+AMD GPUs that are architectures closely related to officially supported
+ROCm enterprise chips (e.g., setting <code>10.3.0</code> for Navi
+21/22/23 architectures):
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">-e</span> HSA_OVERRIDE_GFX_VERSION=10.3.0</span></code></pre></div></li>
+</ul>
+<h3 id="3-nvidia-opencl-environment-variables">3. NVIDIA OpenCL
+Environment Variables</h3>
+<p>NVIDIA containers do not require direct <code>/dev/dri</code> binding
+when using the NVIDIA Container Toolkit. Instead, the runtime mounts the
+driver libraries and exposes the devices dynamically via environment
+variables:</p>
+<ul>
+<li><code>NVIDIA_VISIBLE_DEVICES</code>: Controls which GPUs are mapped
+into the container. Set to <code>all</code> or specific GPU
+UUIDs/indices:
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">-e</span> NVIDIA_VISIBLE_DEVICES=all</span></code></pre></div></li>
+<li><code>NVIDIA_DRIVER_CAPABILITIES</code>: Crucial for OpenCL. By
+default, some base images only enable standard CUDA compute. You must
+explicitly supply <code>compute</code> and <code>utility</code> to map
+OpenCL libraries:
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">-e</span> NVIDIA_DRIVER_CAPABILITIES=compute,utility</span></code></pre></div></li>
+</ul>
+<h3 id="4-intel-compute-runtime-variables">4. Intel Compute-Runtime
+Variables</h3>
+<p>Intel NEO (Compute Runtime for OpenCL) primarily relies on the
+presence of <code>/dev/dri/renderD*</code>. However, debug and behavior
+flags can be configured via:</p>
+<ul>
+<li><code>NEOReadDebugKeys</code>: Enables runtime overriding via debug
+variables when set to <code>1</code>.</li>
+<li><code>ZEX_NUMBER_OF_CCS</code>: Specifies the number of Compute
+Command Streamers exposed to the runtime on supported Intel discrete
+GPUs (e.g., Data Center GPU Flex or Max series).</li>
+</ul>
+<h2 id="implementation-examples">Implementation Examples</h2>
+<h3 id="intel-opencl-execution">Intel OpenCL Execution</h3>
+<p>Intel requires mapping <code>/dev/dri</code>, adding the relevant
+render group, and ensuring the <code>intel-opencl-icd</code> package is
+installed in the container image:</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">--rm</span> <span class="dt">\</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--device</span> /dev/dri <span class="dt">\</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--group-add</span> <span class="va">$(</span><span class="fu">getent</span> group render <span class="kw">|</span> <span class="fu">cut</span> <span class="at">-d:</span> <span class="at">-f3</span><span class="va">)</span> <span class="dt">\</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  intel/opencl:latest clinfo</span></code></pre></div>
+<h3 id="amd-rocm-opencl-execution">AMD ROCm OpenCL Execution</h3>
+<p>AMD requires mapping both <code>/dev/kfd</code> and
+<code>/dev/dri</code>, along with device-level permissions and
+visibility declarations:</p>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">--rm</span> <span class="dt">\</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--device</span> /dev/kfd <span class="dt">\</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--device</span> /dev/dri <span class="dt">\</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--group-add</span> video <span class="dt">\</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">--group-add</span> render <span class="dt">\</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">-e</span> ROCR_VISIBLE_DEVICES=all <span class="dt">\</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>  rocm/opencl:latest clinfo</span></code></pre></div>
+<h3 id="nvidia-opencl-execution">NVIDIA OpenCL Execution</h3>
+<p>NVIDIA leverages the NVIDIA Container Runtime rather than manual
+character device passthrough:</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">--rm</span> <span class="dt">\</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--gpus</span> all <span class="dt">\</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">-e</span> NVIDIA_DRIVER_CAPABILITIES=compute,utility <span class="dt">\</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  nvidia/opencl:runtime-ubuntu22.04 clinfo</span></code></pre></div></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

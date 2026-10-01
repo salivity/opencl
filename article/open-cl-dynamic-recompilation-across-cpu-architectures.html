@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Dynamic Recompilation Across CPU Architectures - opencl</title>
+    <meta name="description" content="This article examines how OpenCL runtimes achieve hardware portability and optimal performance when executing kernels across differing CPU microarchitectures. It covers the dynamic Just-In-Time (JIT) compilation pipeline, the use of intermediate represen">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-dynamic-recompilation-across-cpu-architectures">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Dynamic Recompilation Across CPU Architectures - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-dynamic-recompilation-across-cpu-architectures" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article examines how OpenCL runtimes achieve hardware portability and optimal performance when executing kernels across differing CPU microarchitectures. It covers the dynamic Just-In-Time (JIT) compilation pipeline, the use of intermediate represen" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-dynamic-recompilation-across-cpu-architectures">OpenCL
+Dynamic Recompilation Across CPU Architectures</h1>
+<p>This article examines how OpenCL runtimes achieve hardware
+portability and optimal performance when executing kernels across
+differing CPU microarchitectures. It covers the dynamic Just-In-Time
+(JIT) compilation pipeline, the use of intermediate representations like
+SPIR-V and LLVM IR, runtime CPU feature detection, adaptive
+vectorization, and caching strategies that prevent execution
+overhead.</p>
+<h2 id="the-two-stage-compilation-pipeline">The Two-Stage Compilation
+Pipeline</h2>
+<p>OpenCL bridges architectural divergence by dividing compilation into
+two distinct phases: offline (or frontend) parsing and runtime dynamic
+recompilation.</p>
+<p>When an OpenCL application builds a kernel via
+<code>clBuildProgram</code>, the driver does not immediately bind the
+source code to specific assembly instructions. Instead, high-level
+OpenCL C code is first translated into an Intermediate Representation
+(IR). Today, drivers predominantly use standard SPIR-V (Standard
+Portable Intermediate Representation) or vendor-tuned LLVM IR.</p>
+<p>This IR abstracts hardware details such as register files, vector
+widths, and pipeline structures. By deferring the generation of native
+machine code until execution time on the target platform, the driver
+retains the structural semantics of the program without locking it into
+a specific Instruction Set Architecture (ISA).</p>
+<h2 id="dynamic-runtime-cpu-feature-detection">Dynamic Runtime CPU
+Feature Detection</h2>
+<p>When the OpenCL runtime prepares to generate native machine code from
+the IR, it queries the host CPU to determine the exact capabilities of
+the microarchitecture.</p>
+<p>Drivers query the hardware directly—primarily through the
+<code>CPUID</code> instruction on x86 platforms or system registers and
+aux vectors on ARM architectures. The runtime identifies:</p>
+<ul>
+<li>Supported SIMD extensions (e.g., SSE4.2, AVX2, AVX-512, ARM NEON, or
+SVE)</li>
+<li>Cache hierarchies (L1, L2, L3 sizes and cache line widths)</li>
+<li>Memory alignment requirements and penalty thresholds</li>
+<li>Instruction latencies and pipeline execution port assignments</li>
+</ul>
+<p>By obtaining this real-time hardware profile, the driver configures
+the compiler backend with flags tailored specifically to the host
+processor (conceptually equivalent to compiling with
+<code>-march=native</code>).</p>
+<h2 id="llvm-integration-and-architecture-specific-optimization">LLVM
+Integration and Architecture-Specific Optimization</h2>
+<p>Most modern CPU OpenCL implementations—including Intel's OpenCL
+runtime, AMD's CPU runtimes, and the open-source POCL (Portable
+Computing Language)—utilize the LLVM compiler infrastructure as their
+JIT engine.</p>
+<p>Once the host features are determined, the LLVM target machine
+generator dynamically selects optimization passes based on the detected
+microarchitecture:</p>
+<ol type="1">
+<li><strong>Adaptive Vectorization:</strong> Work-items in an OpenCL
+work-group are mapped onto CPU vector lanes. The JIT compiler adapts its
+vectorization factor to the processor's native width—packing 4 floats
+into 128-bit SSE/NEON registers, 8 floats into 256-bit AVX registers, or
+16 floats into 512-bit AVX-512 registers.</li>
+<li><strong>Instruction Selection:</strong> The compiler substitutes
+generic scalar operations with specialized hardware instructions. For
+example, fused multiply-add (FMA) instructions are emitted only if the
+target core explicitly supports them.</li>
+<li><strong>Loop Unrolling and Scheduling:</strong> Loops are unrolled
+and scheduled according to the exact number of execution ports and
+reorder buffer (ROB) sizes of the detected CPU core to maximize
+instruction-level parallelism (ILP).</li>
+</ol>
+<h2 id="handling-heterogeneous-and-hybrid-microarchitectures">Handling
+Heterogeneous and Hybrid Microarchitectures</h2>
+<p>The rise of hybrid computing architectures—such as Intel’s
+Performance and Efficient cores (P-cores and E-cores) or ARM’s
+big.LITTLE / DynamIQ—introduces architectural disparity within the
+<em>same</em> physical chip.</p>
+<p>OpenCL drivers handle this through two primary approaches:</p>
+<ul>
+<li><strong>Lowest Common Denominator:</strong> The driver compiles the
+kernel targeting the feature set common to all available cores (e.g.,
+restricting optimizations to AVX2 if E-cores lack AVX-512 support) to
+ensure work-groups can migrate freely across cores.</li>
+<li><strong>Sub-Device Partitioning:</strong> Applications can partition
+the OpenCL CPU device into sub-devices via
+<code>clCreateSubDevices</code>. This allows the driver to expose the
+different core clusters independently. The JIT compiler then recompiles
+different versions of the kernel specifically tuned for the distinct
+microarchitecture of each cluster.</li>
+</ul>
+<h2 id="jit-compilation-caching">JIT Compilation Caching</h2>
+<p>Dynamic recompilation carries runtime latency. To minimize overhead
+across subsequent runs or distinct kernel invocations, OpenCL drivers
+implement binary caching mechanisms:</p>
+<ul>
+<li><strong>In-Memory Cache:</strong> Compiled native kernels are
+retained in memory. If <code>clBuildProgram</code> or
+<code>clCreateKernel</code> is called repeatedly with identical build
+options on the same host, the precompiled native machine code is reused
+directly.</li>
+<li><strong>Disk Caching:</strong> Drivers often maintain an on-disk
+cache of compiled binaries keyed by a hash. This hash combines the
+kernel source or IR, the driver version, the dynamic compiler flags, and
+the microarchitecture signature (such as CPU family, model, stepping,
+and feature bits).</li>
+</ul>
+<p>If the executable environment moves to a CPU with a different
+microarchitecture signature, the hash validation fails, prompting the
+OpenCL runtime to discard the obsolete binary and trigger dynamic
+recompilation transparently.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

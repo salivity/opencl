@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Sub-Group Scans vs Work-Group Barriers - opencl</title>
+    <meta name="description" content="This article examines the performance advantages of using OpenCL sub-group scan operations over traditional work-group barrier synchronization. While traditional parallel scans rely on local memory allocations and heavy synchronization barriers that stal">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-sub-group-scans-vs-work-group-barriers">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Sub-Group Scans vs Work-Group Barriers - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-sub-group-scans-vs-work-group-barriers" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article examines the performance advantages of using OpenCL sub-group scan operations over traditional work-group barrier synchronization. While traditional parallel scans rely on local memory allocations and heavy synchronization barriers that stal" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-sub-group-scans-vs-work-group-barriers">OpenCL Sub-Group
+Scans vs Work-Group Barriers</h1>
+<p>This article examines the performance advantages of using OpenCL
+sub-group scan operations over traditional work-group barrier
+synchronization. While traditional parallel scans rely on local memory
+allocations and heavy synchronization barriers that stall hardware
+execution, sub-group scan operations execute directly on SIMD hardware
+registers. By eliminating work-group-wide synchronization, avoiding
+local memory latency, and leveraging dedicated hardware shuffle
+instructions, sub-group scans deliver drastically lower latency and
+higher compute throughput in parallel applications.</p>
+<h3 id="the-inefficiency-of-work-group-barriers">The Inefficiency of
+Work-Group Barriers</h3>
+<p>Historically, performing an inclusive or exclusive prefix scan across
+an OpenCL work-group required a multi-step algorithm utilizing Shared
+Local Memory (SLM):</p>
+<ol type="1">
+<li>Work-items write intermediate private data into <code>__local</code>
+memory arrays.</li>
+<li>A synchronization barrier
+(<code>barrier(CLK_LOCAL_MEM_FENCE)</code>) forces all work-items in the
+work-group to stall until every write completes.</li>
+<li>Threads perform a tree-based reduction or scan step (e.g., Blelloch
+or Hillis-Steele algorithms), repeating barriers at each step (<span
+class="math inline">\(\log_2 N\)</span> stages).</li>
+<li>A final barrier ensures all threads read the correct scanned result
+before modifying the memory.</li>
+</ol>
+<p>This approach introduces significant overhead. Work-groups typically
+contain 128 to 1024 work-items distributed across multiple hardware
+scheduling units (wavefronts or warps). A barrier requires global
+coordination among these independent units. If even a single thread
+experiences high-latency memory access or branch divergence, all other
+threads in the work-group sit idle, degrading execution efficiency.</p>
+<h3 id="direct-register-communication-via-sub-groups">Direct Register
+Communication via Sub-Groups</h3>
+<p>Sub-groups represent the physical hardware execution unit—such as an
+AMD wavefront (32 or 64 threads) or an NVIDIA warp (32 threads)—running
+in lock-step execution. OpenCL sub-group scan functions (e.g.,
+<code>sub_group_scan_inclusive_add</code> or
+<code>sub_group_scan_exclusive_add</code>) map directly to native GPU
+machine instructions.</p>
+<p>Instead of writing data to local memory and stalling at barriers,
+sub-group scans use register-to-register data exchange mechanisms, often
+referred to as shuffle or cross-lane instructions. Data never leaves the
+register file, allowing the scan operation to complete in a few clock
+cycles rather than the dozens or hundreds of cycles demanded by local
+memory round-trips and work-group barriers.</p>
+<h3 id="key-performance-benefits">Key Performance Benefits</h3>
+<ul>
+<li><strong>Elimination of Synchronization Stalls:</strong> Sub-group
+operations execute implicitly synchronized within the hardware SIMD
+vector. There are no barrier stalls, meaning compute units spend fewer
+cycles idling.</li>
+<li><strong>Bypassing Local Memory Contention:</strong> Work-group scans
+heavily stress local memory banks. Bank conflicts occur when multiple
+work-items access different memory addresses within the same memory bank
+simultaneously, serializing memory transactions. Sub-group scans bypass
+SLM entirely, eliminating bank conflicts.</li>
+<li><strong>Higher Hardware Occupancy:</strong> Local memory is a finite
+resource on GPU compute units. When kernels allocate
+<code>__local</code> buffers to perform scans, they limit the number of
+active work-groups that can reside on a compute unit simultaneously.
+Removing the need for local memory buffers decreases resource
+consumption, enabling higher occupancy and better latency hiding for the
+entire GPU.</li>
+<li><strong>Optimized Multi-Stage Scans:</strong> For large scans that
+must span an entire work-group, combining sub-group scans with a minimal
+two-tier reduction is substantially faster than a purely barrier-based
+work-group scan. Work-items perform an initial sub-group scan, write
+only the sub-group aggregates to local memory, synchronize once, scan
+the aggregates, and apply the offsets. This reduces the number of
+required barrier synchronizations from <span
+class="math inline">\(\log_2(\text{work-group size})\)</span> to just
+two.</li>
+</ul>
+<h3 id="summary">Summary</h3>
+<p>Replacing work-group barrier scans with sub-group primitives moves
+synchronization from the software scheduler down to native hardware
+execution. The result is a significant decrease in kernel execution
+time, zero pressure on local memory, and optimal utilization of the
+GPU's internal register bandwidth.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Command Lifecycle Event States - opencl</title>
+    <meta name="description" content="In OpenCL, asynchronous commands submitted to a command-queue are tracked using event objects (clevent). This article provides a concise overview of the distinct execution status states that an OpenCL command moves through during its lifecycle, from init">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-command-lifecycle-event-states">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Command Lifecycle Event States - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-command-lifecycle-event-states" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, asynchronous commands submitted to a command-queue are tracked using event objects (clevent). This article provides a concise overview of the distinct execution status states that an OpenCL command moves through during its lifecycle, from init" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-command-lifecycle-event-states">OpenCL Command Lifecycle
+Event States</h1>
+<p>In OpenCL, asynchronous commands submitted to a command-queue are
+tracked using event objects (<code>cl_event</code>). This article
+provides a concise overview of the distinct execution status states that
+an OpenCL command moves through during its lifecycle, from initial
+creation and queue placement to execution on a device and final
+completion.</p>
+<p>When an OpenCL API function enqueues a command (such as
+<code>clEnqueueNDRangeKernel</code> or
+<code>clEnqueueReadBuffer</code>), it can return an event object.
+Developers query this object via <code>clGetEventInfo</code> with the
+<code>CL_EVENT_COMMAND_EXECUTION_STATUS</code> parameter to monitor the
+command's progression. The command progresses sequentially through the
+following states:</p>
+<h3 id="1-cl_queued">1. CL_QUEUED</h3>
+<p><code>CL_QUEUED</code> is the initial state assigned immediately when
+a command is enqueued into a command-queue by the host application. At
+this stage, the command resides purely in software on the host side and
+has not yet been flushed or delivered to the targeted OpenCL compute
+device.</p>
+<h3 id="2-cl_submitted">2. CL_SUBMITTED</h3>
+<p>A command transitions to <code>CL_SUBMITTED</code> when it has been
+transferred from the host queue to the device's processing pipeline.
+While the device now possesses the command, execution has not yet
+started. Commands often remain in this state if they are waiting for
+prerequisite events in an event wait list to reach
+<code>CL_COMPLETE</code>, or if prior tasks in an in-order command-queue
+have not finished.</p>
+<h3 id="3-cl_running">3. CL_RUNNING</h3>
+<p>The <code>CL_RUNNING</code> state signifies that all dependencies
+have cleared and the device has actively begun executing the command.
+For a kernel command, this means work-items are actively processing on
+compute units; for a memory transfer command, data is actively being
+copied between host and device or between device buffers.</p>
+<h3 id="4-cl_complete">4. CL_COMPLETE</h3>
+<p><code>CL_COMPLETE</code> indicates that the command has finished
+execution successfully. At this point, any output data is guaranteed to
+be available according to OpenCL memory consistency rules, and any
+downstream commands waiting on this event are unblocked to proceed.</p>
+<h3 id="5-negative-values-error-states">5. Negative Values (Error
+States)</h3>
+<p>If a command fails at any point during its lifecycle, its execution
+status transitions to a negative integer value rather than
+<code>CL_COMPLETE</code>. These negative values correspond directly to
+standard OpenCL error codes (such as <code>CL_OUT_OF_RESOURCES</code> or
+<code>CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST</code>). When a
+command fails, any dependent commands waiting on its event are typically
+terminated with an error as well.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

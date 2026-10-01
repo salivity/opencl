@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Cache Coherency in Unified Memory - opencl</title>
+    <meta name="description" content="This article explores how OpenCL maintains cache coherency across unified host-device memory architectures. It details the mechanisms governed by OpenCL’s Shared Virtual Memory (SVM) specifications, the functional differences between coarse-grained and">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-cache-coherency-in-unified-memory">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Cache Coherency in Unified Memory - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-cache-coherency-in-unified-memory" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explores how OpenCL maintains cache coherency across unified host-device memory architectures. It details the mechanisms governed by OpenCL’s Shared Virtual Memory (SVM) specifications, the functional differences between coarse-grained and" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-cache-coherency-in-unified-memory">OpenCL Cache Coherency
+in Unified Memory</h1>
+<p>This article explores how OpenCL maintains cache coherency across
+unified host-device memory architectures. It details the mechanisms
+governed by OpenCL’s Shared Virtual Memory (SVM) specifications, the
+functional differences between coarse-grained and fine-grained memory
+sharing, the use of explicit mapping commands, and the role of memory
+consistency models—including atomic operations and memory fences—in
+synchronizing data between host CPUs and device GPUs.</p>
+<h3 id="the-challenge-of-unified-memory-coherency">The Challenge of
+Unified Memory Coherency</h3>
+<p>In heterogeneous systems where the CPU (host) and GPU or accelerator
+(device) share an address space, maintaining a consistent view of data
+is complex. Both processors maintain their own independent, multi-tiered
+cache hierarchies (L1, L2, L3). Without active management, writes
+executed by the host can remain trapped in its local caches, leaving the
+device to read stale data, and vice versa.</p>
+<p>OpenCL handles this synchronization primarily through its Shared
+Virtual Memory (SVM) framework, introduced in OpenCL 2.0, which balances
+hardware capabilities with explicit software management.</p>
+<h3 id="shared-virtual-memory-svm-levels">Shared Virtual Memory (SVM)
+Levels</h3>
+<p>OpenCL defines three distinct levels of SVM, each handling cache
+coherency differently:</p>
+<ol type="1">
+<li><p><strong>Coarse-Grained Buffer SVM:</strong> Coherency is
+maintained strictly at kernel execution boundaries using explicit
+software synchronization. Memory regions are allocated to share virtual
+addresses, but hardware cache coherency is not assumed. The OpenCL
+runtime relies on map and unmap commands (<code>clEnqueueSVMMap</code>
+and <code>clEnqueueSVMUnmap</code>). Mapping a region prompts the driver
+to flush the device's write caches and invalidate the host's read
+caches, allowing the host to safely access the data. Unmapping reverses
+the process, flushing the host’s modified caches back to system memory
+before the device kernel launches.</p></li>
+<li><p><strong>Fine-Grained Buffer SVM:</strong> Coherency operates at
+the granularity of individual bytes or cache lines within designated SVM
+buffers. Under this model, host and device can access the buffer
+simultaneously without explicit map and unmap commands. Coherency is
+guaranteed either through underlying hardware cache coherency (such as
+integrated GPU-CPU architectures or cache-coherent interconnects) or
+through targeted driver-managed memory flushes executed alongside OpenCL
+synchronization events.</p></li>
+<li><p><strong>Fine-Grained System SVM:</strong> This extends
+fine-grained coherency beyond pre-allocated OpenCL buffers to the entire
+operating system virtual address space. Any standard pointer allocated
+via standard system allocators (like <code>malloc</code>) can be passed
+to an OpenCL kernel. This model relies directly on system hardware
+features, such as Page Address Space IDs (PASID), PCIe Address
+Translation Services (ATS), or coherent bus protocols (such as CXL or
+AMD Infinity Fabric), ensuring hardware-level snooping or
+directory-based coherency across all host and device caches.</p></li>
+</ol>
+<h3 id="the-opencl-memory-consistency-model">The OpenCL Memory
+Consistency Model</h3>
+<p>For fine-grained access without map/unmap commands, OpenCL applies a
+memory consistency model adapted from the C11 and C++11 memory models.
+This model defines precisely when modifications made by one processing
+unit become visible to another:</p>
+<ul>
+<li><strong>Acquire and Release Semantics:</strong> OpenCL relies on
+acquire-release synchronization to order memory operations. A
+<em>release</em> fence or atomic operation forces all prior writes in
+the local processor’s pipeline and private caches to be flushed out to a
+globally visible memory state. An <em>acquire</em> operation invalidates
+stale local cache lines, ensuring subsequent reads fetch the newly
+updated values from memory.</li>
+<li><strong>Atomic Operations:</strong> OpenCL provides atomic
+operations (such as <code>atomic_store</code>, <code>atomic_load</code>,
+and read-modify-write functions) configured with specific memory scopes:
+<code>memory_scope_work_group</code>, <code>memory_scope_device</code>,
+or <code>memory_scope_all_svm_devices</code>. Using
+<code>memory_scope_all_svm_devices</code> instructs the hardware memory
+controller to coordinate cache line invalidations and write-backs across
+both the host CPU and all connected OpenCL devices.</li>
+</ul>
+<h3 id="hardware-vs-software-execution">Hardware vs. Software
+Execution</h3>
+<p>The specific mechanism used to maintain coherency depends on the
+underlying system topology:</p>
+<ul>
+<li><strong>Discrete Systems:</strong> On systems with discrete GPUs
+over traditional PCIe buses that lack hardware cache coherency, OpenCL
+drivers compensate by translating fine-grained access markers into
+targeted DMA transfers, page-fault handling, and explicit cache line
+flushes.</li>
+<li><strong>Integrated Systems:</strong> On systems-on-chip (SoCs) or
+systems with hardware-coherent interconnects, cache coherency is handled
+at the hardware level. Cache-coherency protocols (such as MESI/MOESI
+variants) snoop memory buses and invalidate or update shared cache lines
+across CPU and GPU cores automatically as memory accesses occur. In
+these environments, OpenCL's software layer simply maps execution
+commands to the corresponding CPU/GPU hardware fence instructions.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

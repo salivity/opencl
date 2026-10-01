@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoA vs AoS in OpenCL Data Layouts - opencl</title>
+    <meta name="description" content="This article examines the performance impact of Structure-of-Arrays (SoA) versus Array-of-Structures (AoS) data layouts within OpenCL kernels. Selecting the appropriate memory layout is critical for achieving optimal compute throughput on heterogeneous h">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/so-a-vs-ao-s-in-open-cl-data-layouts">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="SoA vs AoS in OpenCL Data Layouts - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/so-a-vs-ao-s-in-open-cl-data-layouts" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article examines the performance impact of Structure-of-Arrays (SoA) versus Array-of-Structures (AoS) data layouts within OpenCL kernels. Selecting the appropriate memory layout is critical for achieving optimal compute throughput on heterogeneous h" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="soa-vs-aos-in-opencl-data-layouts">SoA vs AoS in OpenCL Data
+Layouts</h1>
+<p>This article examines the performance impact of Structure-of-Arrays
+(SoA) versus Array-of-Structures (AoS) data layouts within OpenCL
+kernels. Selecting the appropriate memory layout is critical for
+achieving optimal compute throughput on heterogeneous hardware, as it
+directly dictates global memory bandwidth efficiency, coalescing
+behavior, cache utilization, and SIMD instruction mapping.</p>
+<h3 id="understanding-aos-and-soa">Understanding AoS and SoA</h3>
+<p>In an Array-of-Structures (AoS) layout, individual records containing
+multiple fields are placed sequentially in memory. For example, a 3D
+particle simulation stored as an AoS groups each particle's
+<code>x</code>, <code>y</code>, and <code>z</code> coordinates
+together:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">typedef</span> <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> x<span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> y<span class="op">;</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> z<span class="op">;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> Particle<span class="op">;</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>Particle particles<span class="op">[</span>N<span class="op">];</span></span></code></pre></div>
+<p>In a Structure-of-Arrays (SoA) layout, the fields are separated into
+distinct parallel arrays:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">typedef</span> <span class="kw">struct</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> x<span class="op">[</span>N<span class="op">];</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> y<span class="op">[</span>N<span class="op">];</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> z<span class="op">[</span>N<span class="op">];</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> ParticleArrays<span class="op">;</span></span></code></pre></div>
+<h3 id="memory-coalescing">Memory Coalescing</h3>
+<p>The primary performance driver in OpenCL GPU programming is memory
+coalescing. GPUs execute work-items in groups (known as warps on NVIDIA
+or wavefronts on AMD). When work-items within a warp execute a load or
+store instruction simultaneously, the hardware attempts to combine those
+individual memory requests into a single continuous transaction.</p>
+<ul>
+<li><strong>AoS and Strided Access:</strong> When a work-item reads the
+<code>x</code> coordinate in an AoS layout, adjacent work-items read
+their respective <code>x</code> values separated by the stride of the
+structure (e.g., <code>sizeof(float) * 3</code>). This strided access
+prevents the memory controller from coalescing the requests into a
+single transaction, leading to multiple high-latency memory transactions
+and wasted memory bus bandwidth.</li>
+<li><strong>SoA and Coalesced Access:</strong> In an SoA layout,
+adjacent work-items access adjacent elements (<code>x[0]</code>,
+<code>x[1]</code>, <code>x[2]</code>, etc.). This unit-stride pattern
+enables the hardware to merge all requests across the wavefront into a
+single contiguous cache-line load, achieving near 100% memory bus
+utilization.</li>
+</ul>
+<h3 id="cache-efficiency-and-bandwidth-waste">Cache Efficiency and
+Bandwidth Waste</h3>
+<p>OpenCL kernels often require only a subset of an object's fields
+during a specific execution phase.</p>
+<ul>
+<li>Under <strong>AoS</strong>, loading one attribute requires fetching
+the entire cache line, which pulls unused fields into the cache. This
+causes cache pollution, reduces effective cache capacity, and wastes
+global memory bandwidth on data that is never computed.</li>
+<li>Under <strong>SoA</strong>, each array is dedicated to a single
+attribute. If a kernel only needs <code>x</code> and <code>y</code>
+coordinates, it never accesses the memory pages assigned to
+<code>z</code> or other auxiliary fields, preserving cache lines
+exclusively for relevant data.</li>
+</ul>
+<h3 id="vectorization-and-simd-utilization">Vectorization and SIMD
+Utilization</h3>
+<p>On architectures that rely on vector units (such as CPU OpenCL
+targets or older GPU architectures), SoA naturally aligns with SIMD
+execution models. Data can be loaded directly into SIMD registers across
+consecutive items without requiring costly unpack, shuffle, or permute
+instructions that are typically necessary to reorganize AoS data for
+vector arithmetic.</p>
+<h3 id="array-of-structures-of-arrays-aosoa">Array of Structures of
+Arrays (AoSoA)</h3>
+<p>While SoA is generally superior for OpenCL GPU targets, it can
+occasionally lead to Translation Lookaside Buffer (TLB) thrashing if an
+algorithm simultaneously reads from many distinct large arrays. To
+balance coalescing and locality, high-performance kernels sometimes
+employ an Array of Structures of Arrays (AoSoA), also known as tiled
+AoS. AoSoA chunks data into small structs containing vector-sized arrays
+(e.g., vectors of size 16 or 32), ensuring perfect coalescing within a
+warp while maintaining spatial locality across different attributes.</p>
+<h3 id="conclusion">Conclusion</h3>
+<p>For virtually all OpenCL kernels executed on massively parallel
+hardware, the Structure-of-Arrays (SoA) approach drastically outperforms
+Array-of-Structures (AoS). By enabling hardware memory coalescing,
+eliminating unused data transfers, and maximizing cache utility, SoA
+resolves the primary memory-bound bottlenecks common in parallel compute
+tasks.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

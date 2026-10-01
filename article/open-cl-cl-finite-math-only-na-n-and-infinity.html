@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL -cl-finite-math-only NaN and Infinity - opencl</title>
+    <meta name="description" content="The -cl-finite-math-only build option in OpenCL instructs the compiler to assume that all floating-point inputs, intermediate calculations, and results are valid, finite numbers. By explicitly disabling support for Not-a-Number (NaN) and signed infinity">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-cl-finite-math-only-na-n-and-infinity">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL -cl-finite-math-only NaN and Infinity - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-cl-finite-math-only-na-n-and-infinity" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The -cl-finite-math-only build option in OpenCL instructs the compiler to assume that all floating-point inputs, intermediate calculations, and results are valid, finite numbers. By explicitly disabling support for Not-a-Number (NaN) and signed infinity" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl--cl-finite-math-only-nan-and-infinity">OpenCL
+-cl-finite-math-only NaN and Infinity</h1>
+<p>The <code>-cl-finite-math-only</code> build option in OpenCL
+instructs the compiler to assume that all floating-point inputs,
+intermediate calculations, and results are valid, finite numbers. By
+explicitly disabling support for Not-a-Number (NaN) and signed infinity
+(+/-Inf) values, this flag allows the compiler to bypass strict IEEE 754
+compliance in exchange for aggressive performance optimizations.</p>
+<h3 id="core-assumptions-of--cl-finite-math-only">Core Assumptions of
+<code>-cl-finite-math-only</code></h3>
+<p>When passing the <code>-cl-finite-math-only</code> flag to
+<code>clBuildProgram</code>, the developer guarantees to the OpenCL
+implementation that:</p>
+<ol type="1">
+<li>No input arguments to OpenCL kernels will be NaN or +/-Inf.</li>
+<li>No intermediate arithmetic operations will produce NaN (such as
+<code>0.0 / 0.0</code> or <code>sqrt(-1.0)</code>).</li>
+<li>No operations will overflow to produce +/-Inf (such as division by
+zero or large exponents).</li>
+</ol>
+<p>If any operation violates these assumptions during execution, the
+resulting behavior is undefined.</p>
+<h3 id="alteration-of-nan-handling">Alteration of NaN Handling</h3>
+<p>Under standard IEEE 754 rules, NaNs have unique propagation and
+comparison semantics. For instance, any comparison involving a NaN
+(except <code>!=</code>) must evaluate to false, and <code>x != x</code>
+is a standard idiom for detecting a NaN.</p>
+<p>With <code>-cl-finite-math-only</code> enabled:</p>
+<ul>
+<li><strong>Elimination of NaN Checks:</strong> Built-in functions
+designed to detect non-finite values, such as <code>isnan()</code>, are
+optimized away or hardcoded to return <code>false</code> (0) at compile
+time.</li>
+<li><strong>Comparison Simplifications:</strong> The compiler assumes
+values are always equal to themselves. Idiomatic checks like
+<code>if (x != x)</code> may be optimized directly to
+<code>false</code>, effectively removing error-handling branches.</li>
+<li><strong>Propagation Failure:</strong> Instead of reliably
+propagating a NaN through subsequent mathematical expressions, the
+hardware may produce arbitrary, unstandardized bit patterns, quiet
+integers, or hardware-specific garbage values.</li>
+</ul>
+<h3 id="alteration-of-infinity-handling">Alteration of Infinity
+Handling</h3>
+<p>In standard OpenCL floating-point math, operations that exceed the
+maximum representable finite range saturate to <code>+INFINITY</code> or
+<code>-INFINITY</code>, and operations such as <code>1.0 / 0.0</code>
+reliably yield infinity.</p>
+<p>With <code>-cl-finite-math-only</code> enabled:</p>
+<ul>
+<li><strong>Elimination of Infinity Checks:</strong> Functions like
+<code>isinf()</code> will generally be optimized to return
+<code>false</code>, while <code>isfinite()</code> is assumed to always
+return <code>true</code>.</li>
+<li><strong>Undefined Overflows:</strong> Calculations that would
+normally result in infinity—such as division by zero or exponentiation
+of large numbers—result in undefined behavior. The hardware may clamp to
+the maximum representable finite float, wrap around, or generate
+unpredictable results depending on the target architecture (GPU, CPU, or
+accelerator).</li>
+<li><strong>Elimination of Sign Handling for Zero:</strong> Division by
+<code>+0.0</code> or <code>-0.0</code> no longer guarantees the
+production of <code>+Inf</code> or <code>-Inf</code>.</li>
+</ul>
+<h3 id="compiler-optimization-mechanisms">Compiler Optimization
+Mechanisms</h3>
+<p>By removing the requirement to handle NaN and infinity correctly, the
+OpenCL compiler can perform algebraic simplifications that are otherwise
+illegal under IEEE 754 specifications:</p>
+<ul>
+<li><strong>Identity Simplifications:</strong> Expressions like
+<code>x - x</code> can be simplified directly to <code>0.0</code>. Under
+strict IEEE 754 rules, this simplification is invalid because
+<code>Inf - Inf</code> results in NaN.</li>
+<li><strong>Multiplication Simplifications:</strong> Expressions like
+<code>x * 0.0</code> can be replaced directly with <code>0.0</code>,
+which is normally forbidden because <code>Inf * 0.0</code> generates a
+NaN.</li>
+<li><strong>Instruction Scheduling and Vectorization:</strong> Hardware
+branch checks that test for exceptional cases are stripped out. The
+compiler can freely unroll loops, auto-vectorize computations, and use
+faster, non-IEEE-compliant hardware instruction paths without preserving
+edge-case state.</li>
+</ul>
+<h3 id="practical-implications">Practical Implications</h3>
+<p>Using <code>-cl-finite-math-only</code> provides a measurable speedup
+for compute-bound kernels where data sets are strictly bounded within
+normal numeric ranges. However, it should never be used if the algorithm
+depends on checking for convergence using <code>isinf()</code>,
+validating inputs with <code>isnan()</code>, or relying on IEEE 754
+exceptional-value handling to prevent application crashes.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

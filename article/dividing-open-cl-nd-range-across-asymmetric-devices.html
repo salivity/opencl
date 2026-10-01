@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dividing OpenCL NDRange Across Asymmetric Devices - opencl</title>
+    <meta name="description" content="Coordinating heterogeneous compute platforms, such as systems pairing integrated GPUs, discrete GPUs, and multicore CPUs, requires specialized load-balancing strategies to prevent bottlenecks. When dividing a global OpenCL NDRange across asymmetric devic">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/dividing-open-cl-nd-range-across-asymmetric-devices">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Dividing OpenCL NDRange Across Asymmetric Devices - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/dividing-open-cl-nd-range-across-asymmetric-devices" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Coordinating heterogeneous compute platforms, such as systems pairing integrated GPUs, discrete GPUs, and multicore CPUs, requires specialized load-balancing strategies to prevent bottlenecks. When dividing a global OpenCL NDRange across asymmetric devic" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="dividing-opencl-ndrange-across-asymmetric-devices">Dividing
+OpenCL NDRange Across Asymmetric Devices</h1>
+<p>Coordinating heterogeneous compute platforms, such as systems pairing
+integrated GPUs, discrete GPUs, and multicore CPUs, requires specialized
+load-balancing strategies to prevent bottlenecks. When dividing a global
+OpenCL NDRange across asymmetric devices, disparities in compute
+density, memory bandwidth, and architectural topologies mean uniform
+splitting will cause faster devices to stall while slower units finish
+processing. This article details the primary strategies for managing
+asymmetric workload distribution in OpenCL, covering static ratio-based
+partitioning, dynamic work-stealing queues, event-driven adaptive
+feedback, and memory topology management.</p>
+<h3 id="static-proportional-partitioning">Static Proportional
+Partitioning</h3>
+<p>Static proportional partitioning calculates a fixed ratio of the
+global NDRange to assign to each device before execution begins. This
+split is typically derived from theoretical performance metrics—such as
+single-precision FLOPS and peak memory bandwidth—or from offline
+benchmarking runs using identical kernel data.</p>
+<p>To execute this strategy, the application decomposes the global
+domain into non-overlapping sub-NDRanges using
+<code>clEnqueueNDRangeKernel</code>, setting custom global work offsets
+(<code>global_work_offset</code>) and dimensions
+(<code>global_work_size</code>) for each device context. While this
+method imposes practically zero runtime scheduling overhead, it assumes
+linear scaling and uniform execution time per work-item. It is fragile
+against data-dependent branching, runtime thermal throttling, or OS
+background activity that alters device performance dynamically.</p>
+<h3 id="dynamic-chunk-based-scheduling">Dynamic Chunk-Based
+Scheduling</h3>
+<p>Dynamic scheduling divides the global NDRange into numerous smaller
+discrete chunks and enqueues them onto a shared, centralized task
+scheduler. Instead of receiving a massive monolithic partition, each
+device requests and executes a small block of work-items. As soon as a
+device finishes its current sub-NDRange, it signals the host to dispatch
+the next available chunk.</p>
+<p>This approach inherently balances the load: faster processors
+naturally complete and consume more chunks, while slower hardware
+processes fewer chunks without stalling the global pipeline. To prevent
+scheduling overhead from overshadowing computation, chunk sizes must be
+carefully calibrated. Common variations include:</p>
+<ul>
+<li><strong>Fixed-size Chunking:</strong> Assigning uniformly sized
+blocks throughout execution.</li>
+<li><strong>Guided Self-Scheduling:</strong> Starting with large chunk
+sizes to minimize initial dispatch overhead, then geometrically
+decreasing the chunk size toward the end of the NDRange to smooth out
+tail-end latency.</li>
+</ul>
+<h3 id="event-driven-adaptive-feedback">Event-Driven Adaptive
+Feedback</h3>
+<p>For iterative algorithms or frame-based computational pipelines,
+adaptive feedback monitors real-time execution speeds to continuously
+adjust partition boundaries. OpenCL provides non-intrusive runtime
+tracking via event profiling:</p>
+<ol type="1">
+<li>Enable profiling on each device command queue using
+<code>CL_QUEUE_PROFILING_ENABLE</code>.</li>
+<li>Attach <code>cl_event</code> objects to each
+<code>clEnqueueNDRangeKernel</code> call.</li>
+<li>Query timestamps with <code>clGetEventProfilingInfo</code> using
+<code>CL_PROFILING_COMMAND_START</code> and
+<code>CL_PROFILING_COMMAND_END</code>.</li>
+<li>Calculate the effective processing rate (work-items per millisecond)
+for each device.</li>
+<li>Reallocate the proportional NDRange boundaries for the subsequent
+iteration based on measured performance.</li>
+</ol>
+<p>Adaptive feedback automatically accounts for dynamic frequency
+scaling, operating system interruptions, and changing computational
+density across algorithmic stages.</p>
+<h3 id="memory-hierarchy-and-transfer-latency-mitigation">Memory
+Hierarchy and Transfer Latency Mitigation</h3>
+<p>Workload distribution is heavily bounded by data migration costs. In
+asymmetric systems, a discrete GPU typically connects via PCIe,
+introducing significant latency, while an integrated GPU or CPU may
+utilize shared physical memory (Zero-Copy).</p>
+<p>Effective distribution strategies must account for these transfer
+penalties:</p>
+<ul>
+<li><strong>Overlap Computation with Transfers:</strong> Utilize
+asynchronous memory operations (<code>clEnqueueWriteBuffer</code> and
+<code>clEnqueueReadBuffer</code> non-blocking calls) and
+double-buffering. A discrete GPU should execute its current sub-NDRange
+while the host transfers inputs for the next iteration.</li>
+<li><strong>Non-Uniform Splitting based on Data Locality:</strong> Bias
+larger workload partitions toward devices where the data already
+resides, reducing total traffic across the interconnect bus.</li>
+</ul>
+<h3 id="device-specific-work-group-optimization">Device-Specific
+Work-Group Optimization</h3>
+<p>Work-group sizing cannot be treated uniformly across asymmetric
+architectures. While global work offsets divide the broader problem, the
+local work-group dimensions must be tailored per device:</p>
+<ul>
+<li><strong>CPUs:</strong> Small work-group sizes (often 1 or small
+multiples of SIMD vector widths) maximize cache utilization and prevent
+thread migration overhead.</li>
+<li><strong>GPUs:</strong> Larger work-group sizes (typically multiples
+of 32 or 64 to match hardware wave/warp architectures) are required to
+hide memory latency through massively parallel thread switching.</li>
+</ul>
+<p>Applications must pass distinct <code>local_work_size</code> pointers
+to each respective device’s kernel enqueue call to ensure peak
+architectural efficiency across the asymmetric cluster.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

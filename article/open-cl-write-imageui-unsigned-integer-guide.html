@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL write_imageui Unsigned Integer Guide - opencl</title>
+    <meta name="description" content="The writeimageui built-in function in OpenCL is designed to store unnormalized unsigned integer pixel data into specific coordinates of an image object. This article covers how writeimageui accepts a 4-component vector, maps color channels according to t">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-write-imageui-unsigned-integer-guide">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL write_imageui Unsigned Integer Guide - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-write-imageui-unsigned-integer-guide" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The writeimageui built-in function in OpenCL is designed to store unnormalized unsigned integer pixel data into specific coordinates of an image object. This article covers how writeimageui accepts a 4-component vector, maps color channels according to t" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-write_imageui-unsigned-integer-guide">OpenCL
+write_imageui Unsigned Integer Guide</h1>
+<p>The <code>write_imageui</code> built-in function in OpenCL is
+designed to store unnormalized unsigned integer pixel data into specific
+coordinates of an image object. This article covers how
+<code>write_imageui</code> accepts a 4-component vector, maps color
+channels according to the image format, handles precision
+down-conversion to underlying image types, and requires exact integer
+coordinate addressing to ensure memory-safe operations.</p>
+<h3 id="function-signature-and-inputs">Function Signature and
+Inputs</h3>
+<p>In OpenCL C, <code>write_imageui</code> is overloaded across various
+dimensionalities (1D, 2D, 3D, and image arrays). A typical 2D image
+signature appears as:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> write_imageui<span class="op">(</span>image2d_t image<span class="op">,</span> int2 coord<span class="op">,</span> uint4 color<span class="op">);</span></span></code></pre></div>
+<p>The function expects three primary arguments:</p>
+<ul>
+<li><strong><code>image</code></strong>: A valid OpenCL image memory
+object qualified with the <code>__write_only</code> or
+<code>__read_write</code> access qualifier.</li>
+<li><strong><code>coord</code></strong>: An integer-based coordinate
+vector (<code>int</code>, <code>int2</code>, or <code>int4</code>)
+specifying the exact pixel location. Unlike normalized floating-point
+reads, image writes always require unnormalized integer
+coordinates.</li>
+<li><strong><code>color</code></strong>: A <code>uint4</code> vector
+containing the four data components <span class="math inline">\((x, y,
+z, w)\)</span> to be written into the pixel.</li>
+</ul>
+<h3 id="absence-of-float-normalization">Absence of Float
+Normalization</h3>
+<p>Unlike <code>write_imagef</code>, which expects floating-point values
+in the range <span class="math inline">\([0.0, 1.0]\)</span> and
+converts them to fixed-point representations, <code>write_imageui</code>
+treats data as pure, unnormalized unsigned integers. The values passed
+in the <code>uint4</code> vector are preserved directly as integer
+values and are not scaled by the maximum integer representation of the
+target channel format.</p>
+<h3 id="target-channel-data-types-and-down-conversion">Target Channel
+Data Types and Down-Conversion</h3>
+<p>The <code>write_imageui</code> function is explicitly intended for
+image formats configured with integer channel data types:</p>
+<ul>
+<li><code>CL_UNSIGNED_INT8</code></li>
+<li><code>CL_UNSIGNED_INT16</code></li>
+<li><code>CL_UNSIGNED_INT32</code></li>
+</ul>
+<p>When writing to an image configured with
+<code>CL_UNSIGNED_INT32</code>, each 32-bit unsigned integer component
+in the <code>color</code> vector maps directly to the corresponding
+channel in device memory with full bit-level fidelity.</p>
+<p>When writing to lower-precision formats like
+<code>CL_UNSIGNED_INT8</code> or <code>CL_UNSIGNED_INT16</code>, OpenCL
+converts the 32-bit unsigned integers from the <code>uint4</code> vector
+down to the destination bit-width. Depending on the OpenCL
+implementation and specification conformance, values exceeding the
+maximum representable capacity (<span class="math inline">\(255\)</span>
+for 8-bit, <span class="math inline">\(65535\)</span> for 16-bit) are
+truncated to the least significant bits or clamped to the maximum range.
+Passing values within the native limits of the format guarantees
+lossless conversion.</p>
+<h3 id="channel-ordering-and-component-mapping">Channel Ordering and
+Component Mapping</h3>
+<p>The components of the <code>color</code> vector <span
+class="math inline">\((x, y, z, w)\)</span> map to the standard color
+channels <span class="math inline">\((R, G, B, A)\)</span>. How these
+values are stored depends on the <code>image_channel_order</code> set
+during image creation:</p>
+<ul>
+<li><strong>Single-channel formats (e.g., <code>CL_R</code>):</strong>
+Only the <code>color.x</code> component is written to memory. The
+<code>y</code>, <code>z</code>, and <code>w</code> components are
+discarded.</li>
+<li><strong>Dual-channel formats (e.g., <code>CL_RG</code>):</strong>
+The <code>color.x</code> and <code>color.y</code> components are stored;
+the <code>z</code> and <code>w</code> components are ignored.</li>
+<li><strong>Three-channel formats (e.g., <code>CL_RGB</code>):</strong>
+The <code>color.x</code>, <code>color.y</code>, and <code>color.z</code>
+components are written; <code>color.w</code> is ignored.</li>
+<li><strong>Four-channel formats (e.g., <code>CL_RGBA</code>):</strong>
+All four components <span class="math inline">\((x, y, z, w)\)</span>
+are written to their respective channels.</li>
+</ul>
+<p>If an image format uses an alternative arrangement such as
+<code>CL_BGRA</code> or <code>CL_ARGB</code>, OpenCL automatically
+handles the swizzling so that <code>color.x</code> corresponds to Red,
+<code>color.y</code> to Green, <code>color.z</code> to Blue, and
+<code>color.w</code> to Alpha.</p>
+<h3 id="coordinate-addressing-and-boundary-safety">Coordinate Addressing
+and Boundary Safety</h3>
+<p>Coordinates provided to <code>write_imageui</code> must fall within
+the defined dimensions of the image: <span class="math inline">\(0 \le x
+&lt; \text{width}\)</span>, <span class="math inline">\(0 \le y &lt;
+\text{height}\)</span>, and <span class="math inline">\(0 \le z &lt;
+\text{depth}\)</span>. OpenCL image write functions do not support
+samplers or addressing modes like wrap-around or clamp-to-edge.
+Supplying coordinates outside the image bounds results in undefined
+behavior, which can cause silent data corruption or GPU hardware faults.
+Boundary validation must be implemented manually within the kernel
+before invoking <code>write_imageui</code>.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

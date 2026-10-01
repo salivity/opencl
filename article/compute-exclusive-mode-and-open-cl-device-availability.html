@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compute-Exclusive Mode and OpenCL Device Availability - opencl</title>
+    <meta name="description" content="Compute-exclusive mode restricts a graphics processing unit (GPU) so that only one compute context can access it at any given time. When multiple OpenCL applications run concurrently on a system configured with compute-exclusive mode, device availability">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/compute-exclusive-mode-and-open-cl-device-availability">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Compute-Exclusive Mode and OpenCL Device Availability - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/compute-exclusive-mode-and-open-cl-device-availability" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Compute-exclusive mode restricts a graphics processing unit (GPU) so that only one compute context can access it at any given time. When multiple OpenCL applications run concurrently on a system configured with compute-exclusive mode, device availability" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1
+id="compute-exclusive-mode-and-opencl-device-availability">Compute-Exclusive
+Mode and OpenCL Device Availability</h1>
+<p>Compute-exclusive mode restricts a graphics processing unit (GPU) so
+that only one compute context can access it at any given time. When
+multiple OpenCL applications run concurrently on a system configured
+with compute-exclusive mode, device availability becomes strictly
+serialized. The first application to establish a context claims
+exclusive ownership of the accelerator, causing subsequent OpenCL
+applications attempting to access the same device to encounter errors or
+fail during initialization until the initial process terminates or
+releases the device context.</p>
+<h3 id="the-mechanism-of-compute-exclusive-mode">The Mechanism of
+Compute-Exclusive Mode</h3>
+<p>Compute-exclusive mode (often configured via GPU management utilities
+such as NVIDIA's <code>nvidia-smi</code> as
+<code>EXCLUSIVE_PROCESS</code>) changes how the GPU driver handles
+context creation requests. Under default operational modes, multiple
+processes can simultaneously create OpenCL contexts on the same physical
+device, with the hardware and driver handling time-slicing and context
+switching between tasks.</p>
+<p>In compute-exclusive mode, the driver enforces a strict
+single-process lock. When an OpenCL application initializes the device
+using <code>clCreateContext</code> or
+<code>clCreateContextFromType</code>, the driver checks the exclusivity
+status. If the device is unreserved, the driver assigns it entirely to
+the calling process and locks out all others.</p>
+<h3 id="impact-on-concurrent-opencl-applications">Impact on Concurrent
+OpenCL Applications</h3>
+<p>When multiple independent OpenCL processes attempt to utilize a
+compute-exclusive device simultaneously, device availability is altered
+in the following ways:</p>
+<ul>
+<li><strong>Context Creation Failures:</strong> The most immediate
+effect is context initialization failure for subsequent processes. While
+the first application executes normally, secondary applications
+attempting to bind to the GPU will typically receive an error such as
+<code>CL_DEVICE_NOT_AVAILABLE</code> or fail generic platform and device
+initialization checks.</li>
+<li><strong>Loss of Multi-Process Parallelism:</strong> Applications
+cannot share the compute pipelines via time-slicing. If an environment
+depends on independent worker processes submitting smaller parallel
+tasks to the same GPU, compute-exclusive mode blocks this architecture
+entirely.</li>
+<li><strong>Fallback Behavior:</strong> If an OpenCL application
+includes error-handling logic that queries alternative devices upon
+context failure, it may automatically fall back to another available GPU
+or the host CPU. If no secondary device is available or fallback logic
+is absent, the secondary process crashes or halts.</li>
+</ul>
+<h3 id="multi-threading-vs-multi-processing">Multi-Threading vs.
+Multi-Processing</h3>
+<p>Compute-exclusive mode affects multi-process architectures
+differently than multi-threaded ones:</p>
+<ul>
+<li><strong>Multiple Processes:</strong> Multiple independent programs
+(or separate instances of the same binary) cannot share the device under
+any circumstances while exclusive mode is active.</li>
+<li><strong>Multiple Threads (Single Process):</strong> Because the
+exclusivity lock is tied to the operating system process ID, multiple
+OpenCL host threads within the <em>same</em> process can still share the
+device context, create individual command queues
+(<code>clCreateCommandQueueWithProperties</code>), and dispatch
+concurrent kernels to the GPU.</li>
+</ul>
+<h3 id="system-design-and-scheduling-considerations">System Design and
+Scheduling Considerations</h3>
+<p>To manage compute-exclusive devices effectively in multi-tenant or
+multi-application environments, workload architectures should adapt
+accordingly:</p>
+<ul>
+<li><strong>Cluster Schedulers:</strong> Workload managers such as
+Slurm, Kubernetes, or Grid Engine should manage resource allocation.
+Schedulers must ensure that only one job requiring OpenCL compute is
+mapped to an exclusive GPU at a time.</li>
+<li><strong>Single-Process Daemon Architectures:</strong> Instead of
+launching multiple OpenCL applications, developers can implement a
+single centralized daemon service that holds the OpenCL context and
+processes requests from client applications through IPC (Inter-Process
+Communication).</li>
+<li><strong>Resetting Device Mode:</strong> If concurrent, multi-process
+hardware sharing is required without an external orchestrator, the GPU
+compute mode must be returned to the default shared mode via the driver
+management tools.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

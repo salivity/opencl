@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Best OpenCL Debuggers for Setting Breakpoints - opencl</title>
+    <meta name="description" content="Debugging OpenCL kernels directly during execution can be challenging due to massive thread parallelism and vendor-specific hardware architectures. While traditional host debuggers cannot directly inspect code executing on a GPU compute unit, several spe">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/best-open-cl-debuggers-for-setting-breakpoints">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Best OpenCL Debuggers for Setting Breakpoints - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/best-open-cl-debuggers-for-setting-breakpoints" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Debugging OpenCL kernels directly during execution can be challenging due to massive thread parallelism and vendor-specific hardware architectures. While traditional host debuggers cannot directly inspect code executing on a GPU compute unit, several spe" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="best-opencl-debuggers-for-setting-breakpoints">Best OpenCL
+Debuggers for Setting Breakpoints</h1>
+<p>Debugging OpenCL kernels directly during execution can be challenging
+due to massive thread parallelism and vendor-specific hardware
+architectures. While traditional host debuggers cannot directly inspect
+code executing on a GPU compute unit, several specialized tools allow
+developers to set breakpoints inside active OpenCL kernels. Depending on
+the target hardware (Intel, AMD, or CPU-based runtimes), developers can
+use vendor-specific GDB implementations, software simulators, or CPU
+fallback runtimes to step through kernel code, inspect private and local
+memory, and evaluate thread-level execution states.</p>
+<h3 id="intel-distribution-for-gdb-oneapi">Intel Distribution for GDB
+(oneAPI)</h3>
+<p>Intel Distribution for GDB is part of the Intel oneAPI Base Toolkit
+and is currently one of the most reliable and actively maintained tools
+for debugging OpenCL kernels.</p>
+<ul>
+<li><strong>Hardware Support:</strong> Intel CPUs, processor graphics
+(integrated GPUs), and Intel discrete GPUs (e.g., Intel Arc, Data Center
+GPU Flex/Max).</li>
+<li><strong>Capabilities:</strong> It allows you to set standard
+breakpoints directly within <code>.cl</code> source files or compiled
+OpenCL SPIR-V binaries. When a breakpoint is hit, you can switch between
+different OpenCL work-items and work-groups, inspect local and private
+variables, view thread registers, and single-step through execution
+lines.</li>
+<li><strong>Usage:</strong> It runs via the command-line interface as
+<code>gdb-oneapi</code> or can be integrated into Eclipse and Visual
+Studio Code via oneAPI extensions.</li>
+</ul>
+<h3 id="amd-rocm-debugger-rocgdb">AMD ROCm Debugger (ROCgdb)</h3>
+<p>For modern AMD hardware running on Linux, ROCgdb is the official
+debugger provided under the AMD ROCm software stack.</p>
+<ul>
+<li><strong>Hardware Support:</strong> Supported AMD discrete GPUs
+(primarily CDNA and select RDNA architectures).</li>
+<li><strong>Capabilities:</strong> ROCgdb is an extension of GDB capable
+of source-level debugging for heterogeneous applications. It allows
+setting breakpoints inside kernels compiled via the ROCm OpenCL runtime.
+You can inspect wavefronts (AMD's equivalent of SIMD warps), monitor
+register allocations, and pause execution at exact kernel lines.</li>
+<li><strong>Usage:</strong> Requires a Linux environment with the full
+ROCm development stack installed, along with kernel-level debugging
+permissions enabled.</li>
+</ul>
+<h3 id="pocl-portable-computing-language-with-native-gdb-or-lldb">PoCL
+(Portable Computing Language) with Native GDB or LLDB</h3>
+<p>If you need to verify kernel logic using standard host debuggers
+without relying on proprietary GPU tools, using PoCL as your OpenCL
+driver is an effective approach.</p>
+<ul>
+<li><strong>Hardware Support:</strong> Multi-core CPUs (x86_64, ARM,
+RISC-V).</li>
+<li><strong>Capabilities:</strong> PoCL compiles OpenCL C into native
+host CPU code using LLVM. Because the execution takes place directly on
+the host CPU threads as standard processes, you can attach standard GDB
+or LLDB to your application.</li>
+<li><strong>Usage:</strong> By compiling kernels with debug symbols
+(passing <code>-g</code> via <code>clBuildProgram</code>), you can set
+standard GDB breakpoints directly inside kernel functions (e.g.,
+<code>break my_kernel.cl:25</code>) and step through work-item loops
+directly.</li>
+</ul>
+<h3 id="oclgrind">Oclgrind</h3>
+<p>Oclgrind is an open-source OpenCL device simulator and memory
+debugger that runs on top of an LLVM interpreter.</p>
+<ul>
+<li><strong>Hardware Support:</strong> Platform-agnostic (runs on the
+host CPU simulating a virtual OpenCL device).</li>
+<li><strong>Capabilities:</strong> While primarily designed to detect
+memory leaks, out-of-bounds accesses, and race conditions, Oclgrind
+includes an interactive debugging mode. You can set conditional halts,
+step through instructions line-by-line across simulated work-items, and
+dump the exact state of work-group memory without physical GPU
+hardware.</li>
+<li><strong>Usage:</strong> Run the application via the CLI wrapper:
+<code>oclgrind --interactive ./your_opencl_app</code>.</li>
+</ul>
+<h3 id="legacy-tools-amd-codexl-and-gdebugger">Legacy Tools: AMD CodeXL
+and gDEBugger</h3>
+<p>Older projects maintaining legacy platforms may encounter AMD CodeXL
+(previously known as gDEBugger).</p>
+<ul>
+<li><strong>Status:</strong> Deprecated and archived by AMD.</li>
+<li><strong>Capabilities:</strong> Historically provided full GUI-based
+OpenCL kernel breakpoint debugging and memory inspection on older AMD
+Radeon GPUs and APUs running on Windows and older Linux
+distributions.</li>
+<li><strong>Current Relevance:</strong> It is generally not recommended
+for modern drivers or recent OpenCL versions (2.x/3.0), but remains one
+of the few GUI-native breakpoint debuggers for legacy OpenCL 1.1/1.2
+applications.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

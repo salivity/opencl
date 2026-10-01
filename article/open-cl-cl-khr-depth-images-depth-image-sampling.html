@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL cl_khr_depth_images: Depth Image Sampling - opencl</title>
+    <meta name="description" content="This article provides an overview of the clkhrdepthimages extension in OpenCL, examining how it enhances standard image processing. It details the dedicated channel formats introduced for depth data, describes depth-comparison sampling techniques, and hi">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-cl-khr-depth-images-depth-image-sampling">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL cl_khr_depth_images: Depth Image Sampling - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-cl-khr-depth-images-depth-image-sampling" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article provides an overview of the clkhrdepthimages extension in OpenCL, examining how it enhances standard image processing. It details the dedicated channel formats introduced for depth data, describes depth-comparison sampling techniques, and hi" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-cl_khr_depth_images-depth-image-sampling">OpenCL
+cl_khr_depth_images: Depth Image Sampling</h1>
+<p>This article provides an overview of the
+<code>cl_khr_depth_images</code> extension in OpenCL, examining how it
+enhances standard image processing. It details the dedicated channel
+formats introduced for depth data, describes depth-comparison sampling
+techniques, and highlights how the extension bridges compute kernels
+with 3D graphics pipelines for tasks such as shadow mapping and
+depth-of-field rendering.</p>
+<h3 id="introduction-of-dedicated-depth-image-formats">Introduction of
+Dedicated Depth Image Formats</h3>
+<p>Standard OpenCL implementations primarily support standard color
+formats with multi-channel layouts such as <code>CL_RGBA</code> or
+<code>CL_R</code>. The <code>cl_khr_depth_images</code> extension
+introduces the <code>CL_DEPTH</code> image channel order, allowing
+memory objects to be explicitly allocated for depth values.</p>
+<p>The extension enables compatibility with specific depth data types,
+including:</p>
+<ul>
+<li><code>CL_UNORM_INT16</code>: 16-bit normalized unsigned integer
+depth values.</li>
+<li><code>CL_FLOAT</code>: 32-bit floating-point depth values.</li>
+<li>Packed formats such as 24-bit normalized integers paired with
+stencil buffers where supported by the implementation.</li>
+</ul>
+<p>When a compute kernel samples a depth image, the scalar depth value
+is read from the single-channel source and returned as a floating-point
+value.</p>
+<h3 id="depth-comparison-and-shadow-sampling">Depth-Comparison and
+Shadow Sampling</h3>
+<p>The most significant functional enhancement added to OpenCL sampling
+capabilities is depth-comparison sampling, often referred to as
+percentage-closer filtering (PCF) or shadow sampling in real-time
+rendering.</p>
+<p>Without this extension, a kernel developer must manually retrieve the
+stored depth value using coordinates, compare it against a reference
+depth value in software, and implement custom filtering routines to
+avoid harsh aliasing. <code>cl_khr_depth_images</code> leverages
+underlying GPU texture hardware to execute this operation natively.</p>
+<p>When configured via the sampler:</p>
+<ol type="1">
+<li><strong>Reference Value Evaluation:</strong> The sampling coordinate
+contains an extra component representing the reference depth value
+(<span class="math inline">\(D_{ref}\)</span>).</li>
+<li><strong>Hardware Comparison:</strong> The hardware compares <span
+class="math inline">\(D_{ref}\)</span> against the depth value (<span
+class="math inline">\(D\)</span>) fetched from the image using
+comparison modes (such as less-than or equal-to).</li>
+<li><strong>Hardware Filtering:</strong> If linear filtering is enabled,
+the hardware evaluates the comparison condition for adjacent texels and
+returns a filtered interpolation of the boolean comparison results. This
+produces smooth transitions directly from the hardware sampler.</li>
+</ol>
+<h3 id="extended-built-in-read-functions">Extended Built-In Read
+Functions</h3>
+<p>The OpenCL C shading language is extended with overloaded variants of
+the <code>read_imagef</code> built-in function to handle depth
+sampling.</p>
+<ul>
+<li><strong>Standard Depth Reads:</strong> Developers can use
+coordinates formatted as <code>float2</code> (for 2D depth images) or
+<code>float4</code> (for 2D depth image arrays) to read the raw scalar
+depth stored in the texture.</li>
+<li><strong>Comparison Reads:</strong> Built-in functions accept
+coordinate vectors containing the reference depth (for example, a
+<code>float4</code> coordinate where the third component specifies <span
+class="math inline">\(D_{ref}\)</span> for a 2D depth image). The return
+value represents the comparison factor, typically ranging from
+<code>0.0</code> (fully in shadow / failed test) to <code>1.0</code>
+(fully lit / passed test).</li>
+</ul>
+<h3 id="graphics-interoperability-and-performance">Graphics
+Interoperability and Performance</h3>
+<p>By aligning OpenCL texture sampling mechanics with OpenGL and Vulkan
+hardware conventions, <code>cl_khr_depth_images</code> removes the need
+for format translation. Depth buffers generated by rasterization
+hardware can be shared directly with OpenCL kernels as depth textures
+via cross-API sharing extensions (<code>cl_khr_gl_sharing</code>).</p>
+<p>This allows compute kernels to perform post-processing effects—such
+as Screen-Space Ambient Occlusion (SSAO), custom shadow map filtering,
+and volumetric light scattering—with minimal memory overhead and native
+hardware sampling speed.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

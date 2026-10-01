@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL and Vulkan Timeline Semaphore Integration - opencl</title>
+    <meta name="description" content="This article explores how OpenCL semaphore extensions bridge the gap between OpenCL compute operations and Vulkan graphics pipelines using external timeline semaphores. It details the limitations of legacy synchronization methods, explains the mechanics">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-and-vulkan-timeline-semaphore-integration">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL and Vulkan Timeline Semaphore Integration - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-and-vulkan-timeline-semaphore-integration" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explores how OpenCL semaphore extensions bridge the gap between OpenCL compute operations and Vulkan graphics pipelines using external timeline semaphores. It details the limitations of legacy synchronization methods, explains the mechanics" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-and-vulkan-timeline-semaphore-integration">OpenCL and
+Vulkan Timeline Semaphore Integration</h1>
+<p>This article explores how OpenCL semaphore extensions bridge the gap
+between OpenCL compute operations and Vulkan graphics pipelines using
+external timeline semaphores. It details the limitations of legacy
+synchronization methods, explains the mechanics of timeline-based
+signaling within OpenCL, and highlights the performance benefits of
+direct, non-blocking GPU-to-GPU task coordination.</p>
+<p>Historically, sharing resources between OpenCL and Vulkan required
+coarse-grained, host-mediated synchronization. Applications typically
+had to stall the host CPU using barriers, flushes, or synchronization
+constructs like <code>clWaitForEvents</code> and
+<code>vkWaitForFences</code>. This round-trip communication across the
+PCIe bus introduced significant latency, degraded pipeline throughput,
+and underutilized modern GPU scheduling capabilities.</p>
+<p>The introduction of extensions such as <code>cl_khr_semaphore</code>
+and <code>cl_khr_external_semaphore</code> resolves these bottlenecks.
+These extensions allow an OpenCL context to import native OS
+handles—such as POSIX file descriptors or Windows NT handles—associated
+with external Vulkan timeline semaphores (<code>VkSemaphore</code>
+configured with <code>VK_SEMAPHORE_TYPE_TIMELINE</code>). Once imported,
+the external timeline semaphore is encapsulated as a native
+<code>cl_semaphore_khr</code> object.</p>
+<p>Unlike binary semaphores, which exist strictly in an unsignaled or
+signaled state, timeline semaphores operate on a monotonically
+increasing 64-bit unsigned integer value. This distinct state model
+enables fine-grained, out-of-order, and many-to-many dependency graphs.
+An application can enqueue work that waits for a specific counter value
+and subsequently signals an incremented value upon completion.</p>
+<p>Within an OpenCL command queue, synchronization is managed directly
+via GPU hardware using commands like
+<code>clEnqueueWaitSemaphoresKHR</code> and
+<code>clEnqueueSignalSemaphoresKHR</code>. When an OpenCL kernel is
+queued, it can be instructed to wait until the Vulkan pipeline writes a
+specific value to the shared timeline semaphore. As soon as the
+condition is satisfied, the GPU hardware scheduler begins the OpenCL
+kernel execution without CPU involvement. After completing its
+computation, the OpenCL kernel updates the timeline semaphore to a
+target value, immediately unblocking downstream Vulkan commands
+configured to wait on that updated value.</p>
+<p>By shifting cross-API synchronization directly to the GPU scheduler,
+these semaphore extensions eliminate host-side coordination overhead.
+This enables seamless, low-latency interoperability for complex
+pipelines, such as rendering a scene in Vulkan, post-processing or
+running physics calculations on that scene in OpenCL, and returning the
+output to the Vulkan presentation queue.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

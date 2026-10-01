@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acquiring and Releasing OpenGL Textures in OpenCL - opencl</title>
+    <meta name="description" content="Sharing textures directly between OpenGL and OpenCL provides high-performance rendering and compute capabilities by eliminating unnecessary data transfers between CPU and GPU memory. This article details the complete process of using an OpenGL texture in">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/acquiring-and-releasing-open-gl-textures-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Acquiring and Releasing OpenGL Textures in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/acquiring-and-releasing-open-gl-textures-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Sharing textures directly between OpenGL and OpenCL provides high-performance rendering and compute capabilities by eliminating unnecessary data transfers between CPU and GPU memory. This article details the complete process of using an OpenGL texture in" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="acquiring-and-releasing-opengl-textures-in-opencl">Acquiring and
+Releasing OpenGL Textures in OpenCL</h1>
+<p>Sharing textures directly between OpenGL and OpenCL provides
+high-performance rendering and compute capabilities by eliminating
+unnecessary data transfers between CPU and GPU memory. This article
+details the complete process of using an OpenGL texture inside an OpenCL
+kernel through the OpenCL-OpenGL interoperability extension, covering
+context configuration, resource synchronization, acquiring ownership,
+kernel execution, and releasing the object back to OpenGL.</p>
+<h3 id="1-prerequisites-interoperability-context-creation">1.
+Prerequisites: Interoperability Context Creation</h3>
+<p>Before acquiring any textures, the OpenCL context must be initialized
+with OpenGL sharing properties. This links the OpenCL context to the
+existing OpenGL context and rendering display.</p>
+<ul>
+<li>On Windows, pass <code>CL_GL_CONTEXT_KHR</code> (bound to
+<code>wglGetCurrentContext()</code>) and <code>CL_WGL_HDC_KHR</code>
+(bound to <code>wglGetCurrentDC()</code>) in the
+<code>cl_context_properties</code> array.</li>
+<li>On Linux/X11, pass <code>CL_GL_CONTEXT_KHR</code> (bound to
+<code>glXGetCurrentContext()</code>) and <code>CL_GLX_DISPLAY_KHR</code>
+(bound to <code>glXGetCurrentDisplay()</code>).</li>
+<li>On macOS, pass <code>CL_CGL_SHAREGROUP_KHR</code> using the current
+<code>CGLShareGroup</code>.</li>
+</ul>
+<h3 id="2-creating-the-opencl-image-from-the-opengl-texture">2. Creating
+the OpenCL Image from the OpenGL Texture</h3>
+<p>Once the shared context is established, create an OpenCL memory
+object (<code>cl_mem</code>) that wraps the existing OpenGL texture
+using <code>clCreateFromGLTexture</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_mem cl_texture <span class="op">=</span> clCreateFromGLTexture<span class="op">(</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    context<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    CL_MEM_READ_WRITE<span class="op">,</span> <span class="co">// or CL_MEM_READ_ONLY / CL_MEM_WRITE_ONLY</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    GL_TEXTURE_2D<span class="op">,</span>     <span class="co">// texture target</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span><span class="op">,</span>                 <span class="co">// miplevel</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    gl_texture_id<span class="op">,</span>     <span class="co">// OpenGL texture ID</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span>err</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<p>This allocates a reference in OpenCL pointing directly to the
+underlying VRAM data of the OpenGL texture without allocating new
+memory.</p>
+<h3 id="3-synchronizing-the-opengl-pipeline">3. Synchronizing the OpenGL
+Pipeline</h3>
+<p>Before OpenCL can access the texture, any pending OpenGL operations
+affecting that texture must be completed. Failure to synchronize can
+result in race conditions and data corruption.</p>
+<p>Call <code>glFinish()</code> to block until the OpenGL pipeline is
+fully flushed:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>glFinish<span class="op">();</span></span></code></pre></div>
+<p>Alternatively, for better performance, use OpenGL sync objects
+(<code>glFenceSync</code> and <code>glClientWaitSync</code>) to avoid
+blocking the CPU thread entirely.</p>
+<h3 id="4-acquiring-the-opengl-object-in-opencl">4. Acquiring the OpenGL
+Object in OpenCL</h3>
+<p>Exclusive ownership of the texture must be handed over to the OpenCL
+command queue using <code>clEnqueueAcquireGLObjects</code>.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>cl_mem gl_objects<span class="op">[]</span> <span class="op">=</span> <span class="op">{</span> cl_texture <span class="op">};</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>clEnqueueAcquireGLObjects<span class="op">(</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    command_queue<span class="op">,</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="dv">1</span><span class="op">,</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    gl_objects<span class="op">,</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span><span class="op">,</span> NULL<span class="op">,</span> NULL</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<p>Once this function is enqueued and executed by the queue, the OpenGL
+texture is safely locked for OpenCL operations. OpenGL must not access
+this texture while OpenCL owns it.</p>
+<h3 id="5-executing-the-opencl-kernel">5. Executing the OpenCL
+Kernel</h3>
+<p>With the memory acquired, set the kernel argument and dispatch the
+compute kernel:</p>
+<ol type="1">
+<li>Pass <code>cl_texture</code> as a kernel argument using
+<code>clSetKernelArg()</code>.</li>
+<li>Inside the OpenCL C kernel code, access the texture using the
+<code>image2d_t</code> type along with built-in functions like
+<code>read_imagef</code> or <code>write_imagef</code>.</li>
+<li>Enqueue the kernel for execution via
+<code>clEnqueueNDRangeKernel()</code>.</li>
+</ol>
+<h3 id="6-releasing-the-opengl-object">6. Releasing the OpenGL
+Object</h3>
+<p>After the kernel finishes processing the texture, ownership must be
+returned to OpenGL using <code>clEnqueueReleaseGLObjects</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>clEnqueueReleaseGLObjects<span class="op">(</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    command_queue<span class="op">,</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="dv">1</span><span class="op">,</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    gl_objects<span class="op">,</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span><span class="op">,</span> NULL<span class="op">,</span> NULL</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<p>This informs the OpenCL runtime that OpenCL is finished modifying or
+reading the texture, transferring ownership back to OpenGL.</p>
+<h3 id="7-synchronizing-back-to-opengl">7. Synchronizing Back to
+OpenGL</h3>
+<p>Before OpenGL uses the texture for rendering (such as sampling in a
+fragment shader or drawing to a framebuffer), ensure OpenCL has
+completed the release operation.</p>
+<p>Call <code>clFinish()</code> on the command queue:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>clFinish<span class="op">(</span>command_queue<span class="op">);</span></span></code></pre></div>
+<p>Alternatively, pass an event object to
+<code>clEnqueueReleaseGLObjects</code> and use the
+<code>cl_khr_gl_event</code> extension to create an OpenGL sync object
+from the OpenCL event (<code>glCreateEventFromCLEventKHR</code>),
+allowing OpenGL to wait on the GPU without stalling the CPU.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

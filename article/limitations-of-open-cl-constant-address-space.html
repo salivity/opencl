@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Limitations of OpenCL Constant Address Space - opencl</title>
+    <meta name="description" content="The constant (or constant) address space in OpenCL provides high-bandwidth, cached, read-only access for data shared across all work-items in a kernel. While it offers performance near that of registers when utilized correctly, it introduces rigid archit">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/limitations-of-open-cl-constant-address-space">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Limitations of OpenCL Constant Address Space - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/limitations-of-open-cl-constant-address-space" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The constant (or constant) address space in OpenCL provides high-bandwidth, cached, read-only access for data shared across all work-items in a kernel. While it offers performance near that of registers when utilized correctly, it introduces rigid archit" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="limitations-of-opencl-constant-address-space">Limitations of
+OpenCL Constant Address Space</h1>
+<p>The <code>__constant</code> (or <code>constant</code>) address space
+in OpenCL provides high-bandwidth, cached, read-only access for data
+shared across all work-items in a kernel. While it offers performance
+near that of registers when utilized correctly, it introduces rigid
+architectural constraints that can limit its utility. This article
+explores the primary limitations of OpenCL constant memory, including
+strict size constraints, read-only execution, serialization penalties
+under non-uniform access, and argument limits.</p>
+<h3 id="1-severely-restricted-capacity">1. Severely Restricted
+Capacity</h3>
+<p>The most prominent restriction of the constant address space is its
+physical size. OpenCL standards mandate a minimum total size of only 64
+KB for <code>CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE</code>. While some
+modern hardware provides slightly more, it remains vastly smaller than
+global memory (which spans gigabytes) or standard system RAM. Exceeding
+this allocation limit prevents kernel compilation or causes launch
+failures at runtime.</p>
+<h3 id="2-read-only-execution-in-kernels">2. Read-Only Execution in
+Kernels</h3>
+<p>Work-items inside a kernel cannot modify constant memory. The address
+space is strictly read-only from the perspective of device code. Any
+updates to constant buffers must be performed by the host application
+via memory writes before the kernel begins execution. If your algorithm
+requires dynamic, in-kernel mutations or intermediate state updates
+across work-items, constant memory cannot be used.</p>
+<h3 id="3-serialization-on-non-uniform-access-divergence">3.
+Serialization on Non-Uniform Access (Divergence)</h3>
+<p>Constant memory relies on specialized hardware caches optimized for
+<strong>broadcast access</strong>. When all work-items in a warp or
+wavefront read the exact same memory address simultaneously, the
+hardware delivers the data in a single cycle. However, if work-items
+read different addresses (non-uniform or divergent access):</p>
+<ul>
+<li>The memory controller must serialize each access.</li>
+<li>Memory latency scales linearly with the number of unique addresses
+accessed by the group.</li>
+<li>Throughput drops significantly, often performing worse than standard
+cached reads from global memory.</li>
+</ul>
+<h3 id="4-limit-on-constant-arguments">4. Limit on Constant
+Arguments</h3>
+<p>OpenCL imposes a strict ceiling on the number of constant buffer
+arguments that can be passed to a single kernel. Hardware
+implementations are only required to support a minimum of 8 constant
+buffer arguments (<code>CL_DEVICE_MAX_CONSTANT_ARGS</code>). Complex
+algorithms requiring numerous distinct parameter buffers may quickly
+exhaust these slots, forcing developers to pack unrelated data
+structures into a single contiguous constant buffer.</p>
+<h3 id="5-host-update-latency">5. Host Update Latency</h3>
+<p>Because constant buffers can only be updated from the host, dynamic
+workloads that change frequently between iterations incur transfer
+overhead. Updating a constant buffer requires synchronization, data
+marshaling, and PCI-e transfer from host to device, which can negate the
+cache-hit speed benefits if kernel execution times are short.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

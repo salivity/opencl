@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL GPU Hang Detection and Recovery Guide - opencl</title>
+    <meta name="description" content="When a GPU experiences a hardware freeze or triggers an operating system Timeout Detection and Recovery (TDR) event, active OpenCL workloads fail abruptly, leaving the host application in an inconsistent state. Detecting these events requires monitoring">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-gpu-hang-detection-and-recovery-guide">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL GPU Hang Detection and Recovery Guide - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-gpu-hang-detection-and-recovery-guide" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="When a GPU experiences a hardware freeze or triggers an operating system Timeout Detection and Recovery (TDR) event, active OpenCL workloads fail abruptly, leaving the host application in an inconsistent state. Detecting these events requires monitoring" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-gpu-hang-detection-and-recovery-guide">OpenCL GPU Hang
+Detection and Recovery Guide</h1>
+<p>When a GPU experiences a hardware freeze or triggers an operating
+system Timeout Detection and Recovery (TDR) event, active OpenCL
+workloads fail abruptly, leaving the host application in an inconsistent
+state. Detecting these events requires monitoring OpenCL API return
+codes, inspecting asynchronous execution event statuses, and utilizing
+context error callbacks. Complete recovery involves tearing down the
+invalidated context, waiting for the underlying driver to stabilize the
+GPU, and reinitializing the OpenCL resources from a known clean state
+while breaking long-running workloads into smaller dispatches to prevent
+recurring crashes.</p>
+<h3 id="detecting-a-gpu-hang">Detecting a GPU Hang</h3>
+<p>OpenCL provides both synchronous and asynchronous mechanisms to alert
+the host application when a hardware failure or driver reset occurs.</p>
+<h4 id="1-context-error-notification-callback">1. Context Error
+Notification Callback</h4>
+<p>When creating a context using <code>clCreateContext</code>, the host
+application can supply a <code>pfn_notify</code> callback function along
+with user data:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_context clCreateContext<span class="op">(</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> cl_context_properties <span class="op">*</span>properties<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    cl_uint num_devices<span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> cl_device_id <span class="op">*</span>devices<span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> <span class="op">(</span>CL_CALLBACK <span class="op">*</span>pfn_notify<span class="op">)(</span><span class="dt">const</span> <span class="dt">char</span> <span class="op">*</span>errinfo<span class="op">,</span> <span class="dt">const</span> <span class="dt">void</span> <span class="op">*</span>private_info<span class="op">,</span> <span class="dt">size_t</span> cb<span class="op">,</span> <span class="dt">void</span> <span class="op">*</span>user_data<span class="op">),</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> <span class="op">*</span>user_data<span class="op">,</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    cl_int <span class="op">*</span>errcode_ret<span class="op">);</span></span></code></pre></div>
+<p>If the GPU encounters a hardware hang or the operating system resets
+the device, the OpenCL runtime invokes this callback asynchronously. The
+<code>errinfo</code> string typically contains driver-specific error
+strings identifying a device reset, lost hardware, or TDR event.</p>
+<h4 id="2-synchronous-api-error-codes">2. Synchronous API Error
+Codes</h4>
+<p>During a hang, executing blocking commands or querying the execution
+status of a submitted command will return severe error codes rather than
+standard runtime errors:</p>
+<ul>
+<li><strong><code>CL_OUT_OF_RESOURCES</code></strong>: Often returned
+when the device has hung, memory has faulted, or the driver failed to
+allocate execution slots during a reset.</li>
+<li><strong><code>CL_DEVICE_NOT_AVAILABLE</code></strong>: Returned if
+the OS has temporarily or permanently detached the device from the
+OpenCL platform during or after a driver reset.</li>
+</ul>
+<h4 id="3-command-execution-status">3. Command Execution Status</h4>
+<p>If an application uses non-blocking enqueue operations, it must query
+the associated <code>cl_event</code> objects:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>cl_int status<span class="op">;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>clGetEventInfo<span class="op">(</span>event<span class="op">,</span> CL_EVENT_COMMAND_EXECUTION_STATUS<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>cl_int<span class="op">),</span> <span class="op">&amp;</span>status<span class="op">,</span> NULL<span class="op">);</span></span></code></pre></div>
+<p>If a kernel execution hangs and causes a reset, <code>status</code>
+will be set to a negative integer indicating execution failure (often
+<code>CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST</code> or a
+vendor-specific negative code) rather than <code>CL_COMPLETE</code>.</p>
+<hr />
+<h3 id="recovery-strategy">Recovery Strategy</h3>
+<p>Once a hang or reset is detected, the existing
+<code>cl_context</code> and all child objects (command queues, memory
+buffers, programs, and events) are considered invalid and cannot be
+reused. Recovery requires a sequential teardown and rebuild.</p>
+<h4 id="step-1-drain-and-release-faulted-resources">Step 1: Drain and
+Release Faulted Resources</h4>
+<p>Attempting to issue new work to the invalid context will fail. The
+host must safely release all existing handles associated with the failed
+context:</p>
+<ol type="1">
+<li>Release all allocated <code>cl_event</code> handles.</li>
+<li>Release all <code>cl_mem</code> buffers and images.</li>
+<li>Release all <code>cl_kernel</code> and <code>cl_program</code>
+objects.</li>
+<li>Release all <code>cl_command_queue</code> instances.</li>
+<li>Call <code>clReleaseContext</code> on the failed context.</li>
+</ol>
+<h4 id="step-2-poll-for-device-re-availability">Step 2: Poll for Device
+Re-availability</h4>
+<p>After an OS TDR event (such as Windows TDR or Linux DRM GPU reset),
+the graphics driver requires time to reinitialize the hardware. The host
+application should enter a polling loop querying
+<code>clGetDeviceIDs</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>cl_uint num_devices <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>cl_int err<span class="op">;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">do</span> <span class="op">{</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Sleep briefly to yield CPU execution</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    sleep_ms<span class="op">(</span><span class="dv">100</span><span class="op">);</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    err <span class="op">=</span> clGetDeviceIDs<span class="op">(</span>platform_id<span class="op">,</span> CL_DEVICE_TYPE_GPU<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> <span class="op">&amp;</span>device_id<span class="op">,</span> <span class="op">&amp;</span>num_devices<span class="op">);</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">while</span> <span class="op">(</span>err <span class="op">==</span> CL_DEVICE_NOT_AVAILABLE<span class="op">);</span></span></code></pre></div>
+<p>Once <code>clGetDeviceIDs</code> returns <code>CL_SUCCESS</code>, the
+driver has restored the GPU to an operational state.</p>
+<h4 id="step-3-rebuild-context-and-pipelines">Step 3: Rebuild Context
+and Pipelines</h4>
+<p>With the device available again:</p>
+<ol type="1">
+<li>Call <code>clCreateContext</code> and reattach the
+<code>pfn_notify</code> error handler.</li>
+<li>Create a new command queue using
+<code>clCreateCommandQueueWithProperties</code> (or
+<code>clCreateCommandQueue</code>).</li>
+<li>Re-upload buffer data from host memory backups.</li>
+<li>Rebuild the <code>cl_program</code> via
+<code>clCreateProgramWithSource</code> (or binaries) and
+<code>clBuildProgram</code>.</li>
+<li>Re-create the necessary <code>cl_kernel</code> objects.</li>
+</ol>
+<h4 id="step-4-resume-workload-via-checkpoints">Step 4: Resume Workload
+via Checkpoints</h4>
+<p>To avoid an immediate secondary crash upon resuming:</p>
+<ul>
+<li><strong>Maintain Host-Side Checkpoints</strong>: Save completed
+batch states on the host so execution can resume from the last known
+valid partition rather than restarting from zero.</li>
+<li><strong>Reduce Global Work Size</strong>: If the hang was triggered
+by exceeding the operating system's kernel watchdog timeout (e.g.,
+standard 2-second Windows TDR), slice large global work sizes into
+smaller tiles and enqueue them iteratively to periodically release the
+GPU to the display server.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

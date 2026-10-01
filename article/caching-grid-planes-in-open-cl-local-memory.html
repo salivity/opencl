@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caching Grid Planes in OpenCL Local Memory - opencl</title>
+    <meta name="description" content="Multi-dimensional stencil computations, commonly found in scientific simulations, image processing, and partial differential equation solvers, are fundamentally constrained by memory bandwidth. When processing 3D or higher-dimensional grids in OpenCL, re">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/caching-grid-planes-in-open-cl-local-memory">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Caching Grid Planes in OpenCL Local Memory - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/caching-grid-planes-in-open-cl-local-memory" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Multi-dimensional stencil computations, commonly found in scientific simulations, image processing, and partial differential equation solvers, are fundamentally constrained by memory bandwidth. When processing 3D or higher-dimensional grids in OpenCL, re" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="caching-grid-planes-in-opencl-local-memory">Caching Grid Planes
+in OpenCL Local Memory</h1>
+<p>Multi-dimensional stencil computations, commonly found in scientific
+simulations, image processing, and partial differential equation
+solvers, are fundamentally constrained by memory bandwidth. When
+processing 3D or higher-dimensional grids in OpenCL, repeatedly fetching
+neighbor values from high-latency global memory degrades performance.
+Caching intermediate 2D grid planes into OpenCL's fast on-chip
+<code>__local</code> memory provides significant data reuse and reduces
+memory traffic. This guide examines the core architectural and
+algorithmic techniques used to efficiently stage and advance grid planes
+through OpenCL local memory.</p>
+<h3 id="25d-spatial-blocking-sliding-plane-algorithm">2.5D Spatial
+Blocking (Sliding Plane Algorithm)</h3>
+<p>Fully caching a 3D block in local memory often exceeds the hardware
+capacity of modern compute units. The 2.5D blocking technique resolves
+this by caching only a moving window of 2D planes across the third
+dimension.</p>
+<p>Instead of allocating a full <span class="math inline">\(X \times Y
+\times Z\)</span> volume:</p>
+<ul>
+<li>The kernel maps a 2D work-group to an <span class="math inline">\(X
+\times Y\)</span> tile.</li>
+<li>The work-group allocates local memory buffers only for the active
+planes needed by the stencil order (e.g., three planes for a standard
+7-point stencil: <span class="math inline">\(z-1\)</span>, <span
+class="math inline">\(z\)</span>, and <span
+class="math inline">\(z+1\)</span>).</li>
+<li>The computation iterates sequentially through the <span
+class="math inline">\(Z\)</span>-axis, computing the stencil result for
+plane <span class="math inline">\(z\)</span> using the locally cached
+planes, before shifting the window forward by one step.</li>
+</ul>
+<h3 id="circular-buffers-via-index-modulo">Circular Buffers via Index
+Modulo</h3>
+<p>To avoid the overhead of copying data between local memory buffers
+when advancing along the orthogonal dimension, developers use circular
+buffering.</p>
+<p>For a 3-plane stencil window, the local allocation is structured as a
+single 3D local array
+<code>__local float cache[3][TILE_Y][TILE_X]</code>. As the loop index
+<span class="math inline">\(k\)</span> iterates through the depth
+dimension, the physical plane assignment rotates dynamically using
+modular arithmetic:</p>
+<ul>
+<li>Plane <span class="math inline">\(z-1\)</span>:
+<code>(k - 1) % 3</code></li>
+<li>Plane <span class="math inline">\(z\)</span>:
+<code>k % 3</code></li>
+<li>Plane <span class="math inline">\(z+1\)</span>:
+<code>(k + 1) % 3</code></li>
+</ul>
+<p>At each step, only the new incoming plane (<span
+class="math inline">\(z+1\)</span>) is loaded from global memory into
+the slot freed by the oldest plane, eliminating redundant memory writes
+within local memory.</p>
+<h3 id="collaborative-halo-staging">Collaborative Halo Staging</h3>
+<p>Stencil computations require boundary values (halos or ghost cells)
+from neighboring partitions. To cache a 2D plane with its halo
+regions:</p>
+<ul>
+<li>The work-group dimensions are configured to match the computational
+domain (e.g., <span class="math inline">\(16 \times 16\)</span>).</li>
+<li>The local memory allocation is expanded to include halo cells (e.g.,
+<span class="math inline">\((16 + 2R) \times (16 + 2R)\)</span>, where
+<span class="math inline">\(R\)</span> is the stencil radius).</li>
+<li>Threads collaboratively load both the interior and halo regions from
+global memory into local memory using coalesced memory accesses.</li>
+<li>A <code>barrier(CLK_LOCAL_MEM_FENCE)</code> synchronizes the
+work-group, ensuring all threads can safely read halo points cached by
+neighboring threads without accessing global memory.</li>
+</ul>
+<h3 id="local-memory-bank-conflict-avoidance">Local Memory Bank Conflict
+Avoidance</h3>
+<p>When multiple work-items access local memory simultaneously, accesses
+that map to the same memory bank cause serialization. Because 2D plane
+caching requires 2D addressing inside <code>__local</code> arrays,
+strided column accesses often cause bank conflicts.</p>
+<p>To mitigate this:</p>
+<ul>
+<li>Add explicit padding to the row pitch of the local memory buffer
+(e.g., allocating <code>TILE_X + 1</code> elements per row).</li>
+<li>Ensure that the stride between consecutive rows is coprime to the
+number of local memory banks (typically 32 banks on modern GPU
+architectures).</li>
+</ul>
+<h3 id="hybrid-register-local-memory-staging">Hybrid Register-Local
+Memory Staging</h3>
+<p>Local memory capacity directly limits the number of active wavefronts
+or warps per compute unit (occupancy). A hybrid staging technique
+conserves local memory by utilizing private thread registers alongside
+local memory:</p>
+<ul>
+<li>The lateral neighbors (<span class="math inline">\(x \pm 1, y \pm
+1\)</span>) are loaded into and shared through local memory because they
+require cross-thread communication.</li>
+<li>The axial neighbors (<span class="math inline">\(z \pm 1\)</span>)
+along the sweep dimension are kept entirely in private variables
+(registers) assigned to each individual thread.</li>
+<li>As the sweep progresses, values move from global memory, into
+registers, and down the register chain, drastically reducing the total
+<code>__local</code> memory allocation to just a single plane per
+work-group.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prevent Bank Conflicts in OpenCL Matrix Transpose - opencl</title>
+    <meta name="description" content="In high-performance GPU computing using OpenCL, matrix transpose implementations typically use local memory (also known as shared memory) as an intermediate staging area to achieve coalesced global memory reads and writes. However, reading columns from t">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/prevent-bank-conflicts-in-open-cl-matrix-transpose">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Prevent Bank Conflicts in OpenCL Matrix Transpose - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/prevent-bank-conflicts-in-open-cl-matrix-transpose" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In high-performance GPU computing using OpenCL, matrix transpose implementations typically use local memory (also known as shared memory) as an intermediate staging area to achieve coalesced global memory reads and writes. However, reading columns from t" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="prevent-bank-conflicts-in-opencl-matrix-transpose">Prevent Bank
+Conflicts in OpenCL Matrix Transpose</h1>
+<p>In high-performance GPU computing using OpenCL, matrix transpose
+implementations typically use local memory (also known as shared memory)
+as an intermediate staging area to achieve coalesced global memory reads
+and writes. However, reading columns from this intermediate buffer often
+leads to shared memory bank conflicts, which serialize thread access and
+reduce performance. This article explains the hardware mechanisms behind
+local memory banks, why standard 2D block transpose patterns cause
+simultaneous collisions, and how adding a simple 1-element pad to array
+dimensions redistributes access across banks to maintain peak memory
+throughput.</p>
+<h2 id="understanding-gpu-local-memory-banks">Understanding GPU Local
+Memory Banks</h2>
+<p>GPU local memory is divided into equally sized memory modules called
+banks, typically 32 banks on modern architectures (matching warp or
+wavefront sizes). Each bank has a width of 4 bytes (32 bits),
+corresponding to a single float or integer:</p>
+<ul>
+<li>Successive 32-bit words are assigned to successive banks.</li>
+<li>Word address <span class="math inline">\(0\)</span> maps to Bank
+<span class="math inline">\(0\)</span>, address <span
+class="math inline">\(1\)</span> to Bank <span
+class="math inline">\(1\)</span>, up to address <span
+class="math inline">\(31\)</span> mapping to Bank <span
+class="math inline">\(31\)</span>. Address <span
+class="math inline">\(32\)</span> wraps back to Bank <span
+class="math inline">\(0\)</span>.</li>
+<li>Formally: <span class="math inline">\(\text{Bank Index} =
+(\text{Byte Address} / 4) \pmod{32}\)</span>.</li>
+</ul>
+<p>When threads in a wavefront access local memory simultaneously, the
+access is optimal if each thread requests data from a distinct bank. If
+two or more threads request different words from the <em>same</em> bank
+in the same cycle, a bank conflict occurs. The hardware must serialize
+these conflicting requests, increasing latency proportionally to the
+conflict degree (e.g., a 32-way conflict executes 32 times slower).</p>
+<h2 id="the-transpose-bottleneck-without-padding">The Transpose
+Bottleneck Without Padding</h2>
+<p>A typical matrix transpose tiles data into local memory to ensure
+that both the read from global memory and the write to global memory are
+coalesced. Consider a standard block size of <span
+class="math inline">\(32 \times 32\)</span> floats:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#define TILE_DIM </span><span class="dv">32</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>__local <span class="dt">float</span> tile<span class="op">[</span>TILE_DIM<span class="op">][</span>TILE_DIM<span class="op">];</span></span></code></pre></div>
+<p>The execution flow proceeds in two steps:</p>
+<ol type="1">
+<li><p><strong>Row-wise Write:</strong> Threads write row data coalesced
+from global memory into the local tile:
+<code>tile[local_row][local_col] = global_input[...];</code> Threads in
+the same wavefront share the same <code>local_row</code> while
+<code>local_col</code> ranges from <span
+class="math inline">\(0\)</span> to <span
+class="math inline">\(31\)</span>. The linear index is: <span
+class="math display">\[\text{Index} = \text{local\_row} \times 32 +
+\text{local\_col}\]</span> Because <code>local_col</code> steps by 1,
+adjacent threads access consecutive 4-byte words, which map to Banks
+<span class="math inline">\(0\)</span> through <span
+class="math inline">\(31\)</span>. There are zero bank
+conflicts.</p></li>
+<li><p><strong>Column-wise Read:</strong> To transpose the data, threads
+read from the local tile along the orthogonal axis:
+<code>float val = tile[local_col][local_row];</code> Here, threads in
+the same wavefront share the same <code>local_row</code> (now the second
+index) while <code>local_col</code> (the first index) ranges from <span
+class="math inline">\(0\)</span> to <span
+class="math inline">\(31\)</span>. The linear memory address for thread
+<span class="math inline">\(i\)</span> is: <span
+class="math display">\[\text{Index}_i = i \times 32 +
+\text{local\_row}\]</span></p></li>
+</ol>
+<p>Evaluating the bank mapping: <span class="math display">\[\text{Bank
+Index}_i = (i \times 32 + \text{local\_row}) \pmod{32} \equiv
+\text{local\_row} \pmod{32}\]</span></p>
+<p>Because <span class="math inline">\(i \times 32\)</span> is a
+multiple of <span class="math inline">\(32\)</span>, every thread <span
+class="math inline">\(i\)</span> in the wavefront computes the exact
+same bank index (<span
+class="math inline">\(\text{local\_row}\)</span>). All 32 threads
+simultaneously access different memory addresses within a single bank,
+causing a maximum 32-way bank conflict.</p>
+<h2 id="how-dimension-padding-resolves-conflicts">How Dimension Padding
+Resolves Conflicts</h2>
+<p>Padding the inner dimension of the local memory allocation alters the
+memory stride without changing the algorithm's logical structure. By
+adding 1 element of padding to the column dimension, the local array is
+declared as:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#define TILE_DIM </span><span class="dv">32</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#define PADDING </span><span class="dv">1</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>__local <span class="dt">float</span> tile<span class="op">[</span>TILE_DIM<span class="op">][</span>TILE_DIM <span class="op">+</span> PADDING<span class="op">];</span></span></code></pre></div>
+<p>The pitch (stride) of each row in memory increases from 32 elements
+to 33 elements.</p>
+<h3 id="the-mathematical-shift">The Mathematical Shift</h3>
+<p>With the padding applied, each successive row starts at an offset
+shifted by 1 word relative to the bank structure.</p>
+<p>During the column-wise read:
+<code>float val = tile[local_col][local_row];</code></p>
+<p>The linear index for thread <span class="math inline">\(i\)</span>
+(where <span class="math inline">\(i = \text{local\_col}\)</span>)
+becomes: <span class="math display">\[\text{Index}_i = i \times (32 + 1)
++ \text{local\_row} = 33i + \text{local\_row}\]</span></p>
+<p>Calculating the target bank index: <span
+class="math display">\[\text{Bank Index}_i = (33i + \text{local\_row})
+\pmod{32}\]</span> <span class="math display">\[\text{Bank Index}_i =
+(32i + i + \text{local\_row}) \pmod{32}\]</span> <span
+class="math display">\[\text{Bank Index}_i = (i + \text{local\_row})
+\pmod{32}\]</span></p>
+<p>As thread index <span class="math inline">\(i\)</span> increments
+from <span class="math inline">\(0\)</span> to <span
+class="math inline">\(31\)</span>, <span class="math inline">\((i +
+\text{local\_row}) \pmod{32}\)</span> maps uniquely to bank indices
+<span class="math inline">\(0\)</span> through <span
+class="math inline">\(31\)</span> (shifted cyclically by
+<code>local_row</code>). Every thread in the wavefront now targets a
+unique bank in the exact same clock cycle.</p>
+<h2 id="summary-of-benefits">Summary of Benefits</h2>
+<ul>
+<li><strong>Zero Serialization:</strong> Eliminates the 32-way
+serialization, allowing all threads in a wavefront to read local memory
+in a single cycle.</li>
+<li><strong>Minimal Memory Overhead:</strong> For a <span
+class="math inline">\(32 \times 32\)</span> block of single-precision
+floats (4096 bytes), adding 1 float per row requires only 32 extra
+floats (128 bytes), representing a negligible ~3.1% local memory
+footprint increase.</li>
+<li><strong>No Logic Branching:</strong> The code structure remains
+unchanged except for the buffer declaration, avoiding any register
+pressure or control flow divergence.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

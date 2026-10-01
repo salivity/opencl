@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL sub_group_reduce_add vs Local Memory Reduction - opencl</title>
+    <meta name="description" content="Parallel reductions in OpenCL have traditionally required manual reduction ladders implemented through shared local memory and explicit synchronization barriers. The introduction of the subgroupreduceadd built-in function replaces these complex manual la">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-sub-group-reduce-add-vs-local-memory-reduction">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL sub_group_reduce_add vs Local Memory Reduction - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-sub-group-reduce-add-vs-local-memory-reduction" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Parallel reductions in OpenCL have traditionally required manual reduction ladders implemented through shared local memory and explicit synchronization barriers. The introduction of the subgroupreduceadd built-in function replaces these complex manual la" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-sub_group_reduce_add-vs-local-memory-reduction">OpenCL
+sub_group_reduce_add vs Local Memory Reduction</h1>
+<p>Parallel reductions in OpenCL have traditionally required manual
+reduction ladders implemented through shared local memory and explicit
+synchronization barriers. The introduction of the
+<code>sub_group_reduce_add</code> built-in function replaces these
+complex manual ladders by executing reductions directly at the hardware
+warp or wavefront level using hardware shuffle registers. This article
+explains how <code>sub_group_reduce_add</code> works, how it eliminates
+local memory overhead and barriers, and how it simplifies
+work-group-level parallel reductions.</p>
+<h3 id="the-traditional-approach-manual-local-memory-ladders">The
+Traditional Approach: Manual Local Memory Ladders</h3>
+<p>Historically, performing a sum reduction across a work-group required
+allocating a block of <code>__local</code> memory. Every work-item wrote
+its partial result into this shared array. A tree-based loop (a
+reduction ladder) then repeatedly halved the active threads:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Traditional manual reduction ladder in local memory</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>local_mem<span class="op">[</span>local_id<span class="op">]</span> <span class="op">=</span> value<span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span><span class="dt">int</span> stride <span class="op">=</span> group_size <span class="op">/</span> <span class="dv">2</span><span class="op">;</span> stride <span class="op">&gt;</span> <span class="dv">0</span><span class="op">;</span> stride <span class="op">&gt;&gt;=</span> <span class="dv">1</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>local_id <span class="op">&lt;</span> stride<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>        local_mem<span class="op">[</span>local_id<span class="op">]</span> <span class="op">+=</span> local_mem<span class="op">[</span>local_id <span class="op">+</span> stride<span class="op">];</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>While effective, this approach introduces significant performance
+bottlenecks:</p>
+<ul>
+<li><strong>Barrier Overhead:</strong> Each step in the loop mandates a
+call to <code>barrier(CLK_LOCAL_MEM_FENCE)</code>, stalling hardware
+threads until every lane reaches the synchronization point.</li>
+<li><strong>Memory Pressure:</strong> It consumes scarce on-chip local
+memory (SRAM), which directly limits compute unit occupancy.</li>
+<li><strong>Bank Conflicts and Divergence:</strong> Accessing shared
+memory across shifting strides often leads to memory bank conflicts and
+severe thread divergence in lockstep execution hardware.</li>
+</ul>
+<h3 id="how-sub_group_reduce_add-works">How
+<code>sub_group_reduce_add</code> Works</h3>
+<p>A sub-group represents a collection of work-items that execute
+concurrently in SIMD fashion within a physical compute unit (equivalent
+to a wavefront on AMD/Intel or a warp on NVIDIA). The OpenCL extension
+<code>cl_khr_subgroups</code> (and OpenCL 2.0+ core specifications)
+exposes these execution units directly to the programmer.</p>
+<p>The <code>sub_group_reduce_add</code> function performs a complete
+summation of a variable across all work-items in that specific sub-group
+in a single high-level call:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> sub_group_sum <span class="op">=</span> sub_group_reduce_add<span class="op">(</span>value<span class="op">);</span></span></code></pre></div>
+<p>Under the hood, the compiler translates this call into native machine
+instructions—such as register shuffle operations (e.g.,
+<code>ds_bpermute</code> or <code>shfl_down_sync</code>) or specialized
+hardware accumulator instructions. Instead of routing data through local
+memory scratchpads, values are swapped directly across registers or
+through fast intra-SIMD interconnects.</p>
+<h3 id="replacing-the-reduction-ladder">Replacing the Reduction
+Ladder</h3>
+<p><code>sub_group_reduce_add</code> fundamentally alters how reduction
+algorithms are structured in OpenCL kernels:</p>
+<ol type="1">
+<li><strong>Elimination of Synchronization Barriers:</strong> Because
+work-items in a sub-group execute in implicit SIMD lockstep,
+<code>sub_group_reduce_add</code> requires zero barrier calls. The
+hardware guarantees synchrony at the register level.</li>
+<li><strong>Bypassing Local Memory for SIMD-Sized Reductions:</strong>
+If a work-group size is equal to or smaller than the sub-group size
+(e.g., 32 or 64 threads), the entire manual ladder and the local memory
+buffer are removed completely. The reduction becomes a one-liner that
+writes directly to global memory.</li>
+<li><strong>Streamlined Two-Stage Reductions for Large
+Work-Groups:</strong> For work-groups comprising multiple sub-groups,
+local memory is retained only for inter-sub-group communication rather
+than intra-work-group computation:
+<ul>
+<li><strong>Stage 1 (Sub-Group Reduction):</strong> Each sub-group
+calculates its local sum using <code>sub_group_reduce_add(value)</code>
+with zero barriers.</li>
+<li><strong>Stage 2 (Local Storage):</strong> The first lane of each
+sub-group (<code>sub_group_elect()</code> or
+<code>get_sub_group_local_id() == 0</code>) writes that single sum into
+local memory.</li>
+<li><strong>Stage 3 (Final Sum):</strong> A single synchronization
+barrier is hit, after which the first sub-group reads the few stored
+sums and executes one final <code>sub_group_reduce_add</code>.</li>
+</ul></li>
+</ol>
+<h3 id="key-benefits">Key Benefits</h3>
+<p>Switching from manual ladders to <code>sub_group_reduce_add</code>
+produces immediate advantages:</p>
+<ul>
+<li><strong>Higher Occupancy:</strong> Drastically reducing or
+eliminating the need for <code>__local</code> memory allocations allows
+the GPU scheduler to fit more active work-groups per compute unit.</li>
+<li><strong>Lower Latency:</strong> Register-to-register transfers
+execute with significantly fewer clock cycles compared to shared-memory
+load-store round trips.</li>
+<li><strong>Maintainable Code:</strong> Eliminates error-prone
+loop-indexing logic, stride calculations, and non-power-of-two padding
+logic traditionally needed for manual tree reductions.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

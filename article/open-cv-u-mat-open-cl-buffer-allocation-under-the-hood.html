@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCV UMat OpenCL Buffer Allocation Under the Hood - opencl</title>
+    <meta name="description" content="When you instantiate an OpenCV cv::UMat, OpenCV relies on its Transparent API (T-API) framework to seamlessly bridge host-side execution and hardware acceleration. Under the hood, allocating an OpenCL-backed UMat involves querying device runtime states,">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cv-u-mat-open-cl-buffer-allocation-under-the-hood">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCV UMat OpenCL Buffer Allocation Under the Hood - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cv-u-mat-open-cl-buffer-allocation-under-the-hood" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="When you instantiate an OpenCV cv::UMat, OpenCV relies on its Transparent API (T-API) framework to seamlessly bridge host-side execution and hardware acceleration. Under the hood, allocating an OpenCL-backed UMat involves querying device runtime states," />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencv-umat-opencl-buffer-allocation-under-the-hood">OpenCV UMat
+OpenCL Buffer Allocation Under the Hood</h1>
+<p>When you instantiate an OpenCV <code>cv::UMat</code>, OpenCV relies
+on its Transparent API (T-API) framework to seamlessly bridge host-side
+execution and hardware acceleration. Under the hood, allocating an
+OpenCL-backed <code>UMat</code> involves querying device runtime states,
+delegating work to a specialized <code>MatAllocator</code>, invoking
+native OpenCL driver APIs such as <code>clCreateBuffer</code>, and
+setting up a synchronization tracking structure called
+<code>UMatData</code>. This process allows OpenCV to manage GPU memory
+lifecycle, alignment, and lazy data transfers between the host CPU and
+the compute device without requiring manual buffer synchronization from
+the user.</p>
+<h3 id="opencl-runtime-and-context-verification">OpenCL Runtime and
+Context Verification</h3>
+<p>The allocation begins with OpenCV evaluating the execution
+environment via <code>cv::ocl::useOpenCL()</code>. If OpenCL support is
+disabled or unavailable at runtime, OpenCV seamlessly falls back to
+standard system memory allocation using <code>cv::fastMalloc</code>.</p>
+<p>When OpenCL is active, the runtime acquires the global OpenCL
+environment managed by OpenCV's internal context manager. This singleton
+infrastructure holds the active OpenCL platform, device handles, the
+shared <code>cl_context</code>, and the default
+<code>cl_command_queue</code>. OpenCV validates device capabilities,
+ensuring that parameters such as maximum memory allocation size
+(<code>CL_DEVICE_MAX_MEM_ALLOC_SIZE</code>) and address alignment rules
+will not be violated by the upcoming buffer request.</p>
+<h3 id="delegation-to-the-openclallocator">Delegation to the
+<code>OpenCLAllocator</code></h3>
+<p>A <code>cv::UMat</code> does not manage memory directly; it delegates
+allocation to a concrete instance of <code>cv::MatAllocator</code>. For
+OpenCL operations, this is handled by the internal
+<code>OpenCLAllocator</code>.</p>
+<p>The allocator receives dimensional specifications—width, height,
+element type, and channels—and computes the total payload size.
+Crucially, the allocator factors in padding and memory alignment:</p>
+<ul>
+<li><strong>Row Step Computation:</strong> The allocator calculates the
+row stride (step) ensuring lines are aligned to boundaries optimal for
+GPU direct memory access (DMA) and compute unit SIMD vector
+operations.</li>
+<li><strong>Size Alignment:</strong> The total byte size is padded to
+satisfy OpenCL alignment constraints, preventing misaligned memory
+accesses within compiled OpenCL kernels.</li>
+</ul>
+<h3
+id="native-buffer-allocation-clcreatebuffer--shared-virtual-memory">Native
+Buffer Allocation (<code>clCreateBuffer</code> / Shared Virtual
+Memory)</h3>
+<p>Once memory dimensions and alignments are calculated, the allocator
+directly calls the OpenCL runtime. In standard configurations, it
+issues:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_mem clCreateBuffer<span class="op">(</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    context<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    CL_MEM_READ_WRITE<span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    total_size<span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    NULL<span class="op">,</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span>errcode</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<p>The <code>CL_MEM_READ_WRITE</code> flag informs the OpenCL driver
+that the kernel can both read and write to this device address
+space.</p>
+<p>On hardware configurations that support Shared Virtual Memory (SVM),
+such as modern integrated GPUs, the allocator checks if coarse-grained
+or fine-grained SVM is enabled. If available, OpenCV bypasses standard
+<code>cl_mem</code> handles in favor of <code>clSVMAlloc</code>,
+allocating memory that resides within a shared address space accessible
+by both CPU and GPU without discrete copy operations.</p>
+<h3 id="wrapping-into-umatdata">Wrapping into <code>UMatData</code></h3>
+<p>Upon successful buffer creation, OpenCV wraps the raw
+<code>cl_mem</code> object into a <code>cv::UMatData</code> control
+block. <code>UMatData</code> is the internal state tracker responsible
+for:</p>
+<ul>
+<li><strong>Reference Counting:</strong> It tracks how many
+<code>cv::UMat</code> or sub-region views reference the underlying
+buffer, mirroring the behavior of <code>cv::Mat::addref()</code> and
+<code>cv::Mat::release()</code>. When the count drops to zero, the
+allocator calls <code>clReleaseMemObject</code>.</li>
+<li><strong>Resource Pointers:</strong> It stores the native
+<code>cl_mem</code> handle in its <code>handle</code> member, while
+keeping the host-accessible CPU pointer (<code>origdata</code> and
+<code>data</code>) unallocated or set to <code>nullptr</code>.</li>
+<li><strong>State and Access Flags:</strong> It sets state flags
+tracking whether the most up-to-date copy of the data resides on the
+device, on the host, or is currently shared.</li>
+</ul>
+<h3 id="lazy-synchronization-strategy">Lazy Synchronization
+Strategy</h3>
+<p>The initial allocation does not synchronize or map data to the host.
+Host memory allocation is deferred entirely.</p>
+<p>If a user later requests a CPU-bound view by invoking
+<code>UMat::getMat(cv::ACCESS_READ)</code> or <code>ACCESS_WRITE</code>,
+the <code>OpenCLAllocator</code> triggers lazy synchronization. It
+allocates host memory on-demand and calls
+<code>clEnqueueReadBuffer</code> or <code>clEnqueueMapBuffer</code> on
+the active command queue. Conversely, if host operations modify the data
+and a GPU operation is subsequently called on the <code>UMat</code>, the
+T-API marks the device copy as dirty and executes
+<code>clEnqueueWriteBuffer</code> before dispatching the next OpenCL
+kernel.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

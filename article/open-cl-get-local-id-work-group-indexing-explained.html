@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL get_local_id Work-Group Indexing Explained - opencl</title>
+    <meta name="description" content="In OpenCL, parallel execution is organized hierarchically into an NDRange, work-groups, and individual work-items. This article explains how the built-in function getlocalid provides relative coordinate indexing within a localized work-group. Readers wil">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-get-local-id-work-group-indexing-explained">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL get_local_id Work-Group Indexing Explained - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-get-local-id-work-group-indexing-explained" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, parallel execution is organized hierarchically into an NDRange, work-groups, and individual work-items. This article explains how the built-in function getlocalid provides relative coordinate indexing within a localized work-group. Readers wil" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-get_local_id-work-group-indexing-explained">OpenCL
+get_local_id Work-Group Indexing Explained</h1>
+<p>In OpenCL, parallel execution is organized hierarchically into an
+NDRange, work-groups, and individual work-items. This article explains
+how the built-in function <code>get_local_id</code> provides relative
+coordinate indexing within a localized work-group. Readers will learn
+the mechanics of work-item positioning, dimensional indexing across up
+to three dimensions, and how these local coordinates are used for shared
+local memory access and intra-work-group collaboration.</p>
+<h2 id="the-opencl-execution-hierarchy">The OpenCL Execution
+Hierarchy</h2>
+<p>OpenCL divides computational tasks across an N-dimensional space
+known as the NDRange (1D, 2D, or 3D). The entire NDRange is split into
+multiple independent subsets called work-groups, each containing an
+identical number of work-items (threads).</p>
+<p>While every work-item possesses a unique global coordinate within the
+overall NDRange (retrieved via <code>get_global_id</code>), it also
+possesses a local coordinate relative only to the specific work-group to
+which it belongs. The <code>get_local_id</code> function provides access
+to this relative coordinate.</p>
+<h2 id="syntax-and-dimensional-indexing">Syntax and Dimensional
+Indexing</h2>
+<p>The function signature for <code>get_local_id</code> is defined
+as:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> get_local_id<span class="op">(</span>uint dimindx<span class="op">);</span></span></code></pre></div>
+<p>The parameter <code>dimindx</code> represents the dimension for which
+the coordinate index is requested:</p>
+<ul>
+<li><code>dimindx = 0</code>: Corresponds to the X dimension.</li>
+<li><code>dimindx = 1</code>: Corresponds to the Y dimension.</li>
+<li><code>dimindx = 2</code>: Corresponds to the Z dimension.</li>
+</ul>
+<p>For any given dimension, the index returned by
+<code>get_local_id(dimindx)</code> starts at <code>0</code> and
+increments sequentially up to <code>get_local_size(dimindx) - 1</code>.
+Regardless of where a work-group is situated in the broader NDRange, the
+first work-item in that work-group always receives a local ID of
+<code>0</code> along each active axis.</p>
+<h2 id="coordinate-mapping-and-linearization">Coordinate Mapping and
+Linearization</h2>
+<p>Work-groups frequently process multi-dimensional data, such as images
+or matrices. Within these structures, <code>get_local_id</code> acts as
+an offset within the local execution block.</p>
+<p>When accessing one-dimensional storage arrays (such as linear
+allocations in <code>__local</code> memory) using multi-dimensional
+coordinates, <code>get_local_id</code> is used to calculate a unique 1D
+linear index:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">// 2D to 1D Linearization</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> local_x <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> local_y <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">1</span><span class="op">);</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> local_width <span class="op">=</span> get_local_size<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> local_index <span class="op">=</span> local_y <span class="op">*</span> local_width <span class="op">+</span> local_x<span class="op">;</span></span></code></pre></div>
+<p>This mapping guarantees that each work-item within the work-group is
+assigned a unique slot in the local buffer without overlapping with
+other items in the same group.</p>
+<h2 id="primary-use-cases">Primary Use Cases</h2>
+<h3 id="1-local-memory-staging-tiling">1. Local Memory Staging
+(Tiling)</h3>
+<p>High-performance kernels often stage data from high-latency global
+memory into low-latency <code>__local</code> memory. Work-items use
+<code>get_global_id</code> to determine which data point to fetch from
+global RAM, but use <code>get_local_id</code> to determine where to
+store that data within the group's shared memory cache.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> matrix_tile_example<span class="op">(</span>__global <span class="dt">float</span> <span class="op">*</span>input<span class="op">,</span> __local <span class="dt">float</span> <span class="op">*</span>tile<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> gx <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> gy <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">1</span><span class="op">);</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> lx <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> ly <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">1</span><span class="op">);</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> local_w <span class="op">=</span> get_local_size<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> global_w <span class="op">=</span> get_global_size<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Read from global, write to local</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    tile<span class="op">[</span>ly <span class="op">*</span> local_w <span class="op">+</span> lx<span class="op">]</span> <span class="op">=</span> input<span class="op">[</span>gy <span class="op">*</span> global_w <span class="op">+</span> gx<span class="op">];</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Computation on shared tile follows...</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="2-intra-group-reductions">2. Intra-Group Reductions</h3>
+<p>Parallel reduction operations (such as finding a sum, minimum, or
+maximum across an array) rely on tree-based algorithms executed inside a
+work-group. <code>get_local_id(0)</code> is used conditionally to
+deactivate half of the active threads at each step of the reduction
+tree:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span><span class="dt">unsigned</span> <span class="dt">int</span> stride <span class="op">=</span> get_local_size<span class="op">(</span><span class="dv">0</span><span class="op">)</span> <span class="op">/</span> <span class="dv">2</span><span class="op">;</span> stride <span class="op">&gt;</span> <span class="dv">0</span><span class="op">;</span> stride <span class="op">&gt;&gt;=</span> <span class="dv">1</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">)</span> <span class="op">&lt;</span> stride<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        tile<span class="op">[</span>get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">)]</span> <span class="op">+=</span> tile<span class="op">[</span>get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">)</span> <span class="op">+</span> stride<span class="op">];</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>By providing a stable, zero-based coordinate space for each
+work-group, <code>get_local_id</code> enables predictable memory access
+patterns, safe thread-level synchronization, and efficient data reuse
+across hardware compute units.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

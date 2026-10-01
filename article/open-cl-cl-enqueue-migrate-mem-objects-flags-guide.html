@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL clEnqueueMigrateMemObjects Flags Guide - opencl</title>
+    <meta name="description" content="In OpenCL, explicit memory migration allows applications to preload or transfer memory objects between devices and the host to hide transfer latency and optimize execution pipelines. The clEnqueueMigrateMemObjects function provides this capability throug">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-cl-enqueue-migrate-mem-objects-flags-guide">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL clEnqueueMigrateMemObjects Flags Guide - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-cl-enqueue-migrate-mem-objects-flags-guide" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, explicit memory migration allows applications to preload or transfer memory objects between devices and the host to hide transfer latency and optimize execution pipelines. The clEnqueueMigrateMemObjects function provides this capability throug" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-clenqueuemigratememobjects-flags-guide">OpenCL
+clEnqueueMigrateMemObjects Flags Guide</h1>
+<p>In OpenCL, explicit memory migration allows applications to preload
+or transfer memory objects between devices and the host to hide transfer
+latency and optimize execution pipelines. The
+<code>clEnqueueMigrateMemObjects</code> function provides this
+capability through a bitfield parameter named <code>flags</code> of type
+<code>cl_mem_migration_flags</code>. This article explains the exact
+flags available in the OpenCL specification for explicit memory
+migration and how each flag alters the behavior of your memory
+transfers.</p>
+<h3 id="default-migration-passing-0">Default Migration: Passing
+<code>0</code></h3>
+<p>When you pass <code>0</code> to the <code>flags</code> parameter,
+OpenCL defaults to migrating the specified memory objects to the device
+associated with the targeted command queue (<code>command_queue</code>).
+In this mode, the system copies the existing contents of each specified
+memory object from its current location to the target compute device,
+ensuring that the device has an up-to-date representation of the data
+before any subsequent kernels execute.</p>
+<h3
+id="cl_migrate_mem_object_host"><code>CL_MIGRATE_MEM_OBJECT_HOST</code></h3>
+<p>Setting the <code>CL_MIGRATE_MEM_OBJECT_HOST</code> flag explicitly
+directs the OpenCL runtime to migrate the memory objects to host memory
+rather than the device associated with the command queue.</p>
+<p>This flag is commonly used when:</p>
+<ul>
+<li>The host CPU needs to access the memory object directly.</li>
+<li>You want to pull data back to the host asynchronously before mapping
+or reading it.</li>
+<li>You need to free up memory on a constrained OpenCL accelerator
+device while preserving data.</li>
+</ul>
+<h3
+id="cl_migrate_mem_object_content_undefined"><code>CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED</code></h3>
+<p>The <code>CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED</code> flag
+instructs the OpenCL runtime that the current contents of the memory
+objects do not need to be preserved during the migration. When this flag
+is set, the runtime ensures that physical storage for the memory object
+is allocated on the target device, but it skips the overhead of
+transferring the actual data bytes across the interconnect (such as
+PCIe).</p>
+<p>This flag is ideal when:</p>
+<ul>
+<li>A memory object is used purely as an output buffer or temporary
+scratchpad for a kernel, meaning existing data is irrelevant and will be
+overwritten.</li>
+<li>You want to eliminate unnecessary bandwidth consumption while
+ensuring memory allocation occurs ahead of kernel execution.</li>
+</ul>
+<h3 id="combining-migration-flags">Combining Migration Flags</h3>
+<p>The <code>flags</code> parameter accepts bitwise combinations of the
+available options. For instance, combining
+<code>CL_MIGRATE_MEM_OBJECT_HOST | CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED</code>
+forces the runtime to allocate storage on the host without transferring
+the current contents from the device.</p>
+<p>By utilizing these flags, OpenCL developers can overlap computation
+with explicit memory placement, eliminate redundant data transfers, and
+manage memory residency across heterogeneous architectures.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

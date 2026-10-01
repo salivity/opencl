@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How Does the OpenCL Platform Model Work? - opencl</title>
+    <meta name="description" content="The OpenCL platform model provides an abstract representation of heterogeneous computing environments, establishing how execution tasks and physical hardware are mapped across a computing system. Under this architecture, the environment is organized into">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-does-the-open-cl-platform-model-work">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How Does the OpenCL Platform Model Work? - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-does-the-open-cl-platform-model-work" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The OpenCL platform model provides an abstract representation of heterogeneous computing environments, establishing how execution tasks and physical hardware are mapped across a computing system. Under this architecture, the environment is organized into" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-does-the-opencl-platform-model-work">How Does the OpenCL
+Platform Model Work?</h1>
+<p>The OpenCL platform model provides an abstract representation of
+heterogeneous computing environments, establishing how execution tasks
+and physical hardware are mapped across a computing system. Under this
+architecture, the environment is organized into a hierarchical
+relationship consisting of a single central host coordinating execution
+across one or more compute devices. Each compute device is subsequently
+partitioned into compute units, which are further divided into
+processing elements. This structural breakdown enables unified control
+over diverse hardware types such as multi-core CPUs, graphics processing
+units (GPUs), digital signal processors (DSPs), and specialized hardware
+accelerators.</p>
+<h2 id="the-host-system">The Host System</h2>
+<p>The host acts as the central coordinator and master controller within
+the OpenCL topology. It typically runs on a standard CPU and operating
+system, executing the primary application code.</p>
+<p>Rather than participating directly in fine-grained data-parallel
+computations by default, the host is responsible for orchestrating the
+overall execution pipeline:</p>
+<ul>
+<li><strong>Platform and Context Discovery:</strong> The host queries
+available OpenCL implementations (platforms) and enumerates the attached
+hardware devices. It then establishes an execution context to bind
+specific devices, memory buffers, and program objects together.</li>
+<li><strong>Resource Allocation:</strong> It creates and handles data
+objects—such as 1D linear buffers, 2D/3D image structures, or
+pipes—managing transfers between host system memory and device
+memory.</li>
+<li><strong>Kernel Compilation and Dispatch:</strong> The host compiles
+OpenCL C or SPIR-V kernel programs at runtime (or loads pre-compiled
+binaries) and submits execution commands to compute devices using
+command queues.</li>
+</ul>
+<h2 id="compute-devices">Compute Devices</h2>
+<p>An OpenCL compute device is an independent compute-capable hardware
+component attached to the host processor. An individual system can host
+several distinct compute devices simultaneously, even across mixed
+architectures.</p>
+<p>OpenCL classifies devices using standard device-type identifiers:</p>
+<ul>
+<li><strong>CL_DEVICE_TYPE_CPU:</strong> Host processors or multi-core
+CPUs used directly as compute targets.</li>
+<li><strong>CL_DEVICE_TYPE_GPU:</strong> Discrete or integrated graphics
+processing units, typically optimized for massive data parallelism.</li>
+<li><strong>CL_DEVICE_TYPE_ACCELERATOR:</strong> Dedicated processing
+hardware such as DSPs, field-programmable gate arrays (FPGAs), or neural
+processing units (NPUs).</li>
+<li><strong>CL_DEVICE_TYPE_CUSTOM:</strong> Hardware accelerators with
+specialized or non-programmable execution features.</li>
+</ul>
+<h2
+id="the-internal-hierarchy-compute-units-and-processing-elements">The
+Internal Hierarchy: Compute Units and Processing Elements</h2>
+<p>To provide a consistent execution target across fundamentally
+different architectures, the OpenCL platform model abstracts compute
+devices into a two-level internal hierarchy:</p>
+<h3 id="compute-units-cus">Compute Units (CUs)</h3>
+<p>A compute device consists of one or more compute units. A compute
+unit functions as a localized execution core within the device. In GPU
+architecture, a compute unit corresponds to a hardware streaming
+multiprocessor or compute engine, while on a multicore CPU, it generally
+maps to an individual CPU core. Compute units contain dedicated
+scheduling logic and shared hardware structures, including local
+scratchpad memory and barrier synchronization mechanisms shared by their
+underlying execution pipelines.</p>
+<h3 id="processing-elements-pes">Processing Elements (PEs)</h3>
+<p>Each compute unit is further divided into one or more processing
+elements. The processing element is the fundamental execution unit
+responsible for running the individual stream of instructions (a
+work-item) in SIMD (Single Instruction, Multiple Data) or SPMD (Single
+Program, Multiple Data) fashion. On a modern GPU, processing elements
+correspond to individual SIMD vector lanes or ALU execution cores within
+a multiprocessor. Each processing element maintains its own private
+registers and memory space that cannot be accessed by other processing
+elements.</p>
+<h2 id="mapping-the-platform-model-to-execution">Mapping the Platform
+Model to Execution</h2>
+<p>This structural categorization directly reflects OpenCL's execution
+model:</p>
+<ul>
+<li>An entire parallel computation space is defined as an N-dimensional
+range (NDRange) composed of discrete <strong>work-items</strong>.</li>
+<li>Work-items are organized into <strong>work-groups</strong>, which
+execute collectively on a single <strong>compute unit</strong>.</li>
+<li>Individual work-items within that group execute on the compute
+unit's <strong>processing elements</strong>, allowing them to
+communicate via shared local memory and synchronize using work-group
+barriers.</li>
+</ul>
+<p>Through this abstraction, OpenCL separates high-level coordination
+handled by the host CPU from parallel compute tasks distributed across
+hardware-agnostic processing units.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

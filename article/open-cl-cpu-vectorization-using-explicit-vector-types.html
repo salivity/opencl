@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL CPU Vectorization Using Explicit Vector Types - opencl</title>
+    <meta name="description" content="Modern multi-core CPUs rely on SIMD (Single Instruction, Multiple Data) instruction sets like AVX, AVX-512, and ARM NEON to achieve peak compute throughput. While OpenCL runtimes feature auto-vectorizers designed to convert scalar work-items into SIMD in">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-cpu-vectorization-using-explicit-vector-types">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL CPU Vectorization Using Explicit Vector Types - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-cpu-vectorization-using-explicit-vector-types" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Modern multi-core CPUs rely on SIMD (Single Instruction, Multiple Data) instruction sets like AVX, AVX-512, and ARM NEON to achieve peak compute throughput. While OpenCL runtimes feature auto-vectorizers designed to convert scalar work-items into SIMD in" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-cpu-vectorization-using-explicit-vector-types">OpenCL CPU
+Vectorization Using Explicit Vector Types</h1>
+<p>Modern multi-core CPUs rely on SIMD (Single Instruction, Multiple
+Data) instruction sets like AVX, AVX-512, and ARM NEON to achieve peak
+compute throughput. While OpenCL runtimes feature auto-vectorizers
+designed to convert scalar work-items into SIMD instructions, compiler
+heuristics often fail due to complex branching or ambiguous pointer
+aliasing. By utilizing OpenCL C explicit vector types—such as
+<code>float4</code>, <code>float8</code>, or
+<code>int16</code>—developers can bypass compiler guesswork, directly
+binding operations to hardware vector registers and guaranteeing
+consistent, high-performance vectorization on CPU compute devices.</p>
+<h3 id="the-limits-of-opencl-cpu-auto-vectorization">The Limits of
+OpenCL CPU Auto-Vectorization</h3>
+<p>When executing standard OpenCL kernels, the runtime maps individual
+work-items across CPU threads. The CPU OpenCL driver typically tries to
+pack multiple scalar work-items into a single hardware SIMD vector (a
+process known as whole-function vectorization). However,
+auto-vectorizers are inherently conservative. If a kernel contains:</p>
+<ul>
+<li>Complex control flow or dynamic branching,</li>
+<li>Non-contiguous memory accesses,</li>
+<li>Indeterminate pointer aliasing,</li>
+</ul>
+<p>the compiler defaults to scalar execution or inserts costly runtime
+divergence checks, leading to suboptimal CPU utilization.</p>
+<h3 id="how-explicit-vector-types-guarantee-vectorization">How Explicit
+Vector Types Guarantee Vectorization</h3>
+<p>OpenCL C defines built-in vector data types for primitive types,
+available in widths of 2, 3, 4, 8, and 16 (e.g., <code>int4</code>,
+<code>float8</code>, <code>double2</code>).</p>
+<p>When an algorithm is rewritten using these types, vectorization is
+expressed directly in the source code rather than being inferred by the
+compiler. At the compiler intermediate representation (IR) level, an
+operation such as:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>float8 a<span class="op">,</span> b<span class="op">,</span> c<span class="op">;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>c <span class="op">=</span> a <span class="op">+</span> b<span class="op">;</span></span></code></pre></div>
+<p>is lowered directly into a native vector instruction rather than
+scalar addition instructions. On an x86 architecture supporting AVX, the
+OpenCL runtime’s LLVM-based backend translates <code>c = a + b</code>
+directly to a 256-bit instruction (such as <code>_mm256_add_ps</code>),
+mapping the variables to <code>ymm</code> registers.</p>
+<p>Because the vector intent is explicit, the compiler does not need to
+analyze loop iterations or evaluate dependency graphs to prove that
+parallel execution is safe.</p>
+<h3
+id="efficient-memory-transfers-with-vector-loads-and-stores">Efficient
+Memory Transfers with Vector Loads and Stores</h3>
+<p>Using explicit vector types requires structuring memory reads and
+writes to maintain vector width. OpenCL C provides explicit load and
+store primitives to facilitate this:</p>
+<ul>
+<li><strong><code>vloadn</code> and <code>vstoren</code></strong>:
+Built-in functions that read or write <span
+class="math inline">\(n\)</span> continuous elements from an array into
+an explicit vector type.</li>
+<li><strong>Direct pointer casting</strong>: If memory is guaranteed to
+be aligned to the vector size (e.g., 32-byte alignment for a 256-bit
+<code>float8</code>), global pointers can be cast directly to vector
+pointers (<code>__global float8*</code>).</li>
+</ul>
+<p>Direct memory operations ensure that data movement utilizes CPU
+streaming instructions and wide memory buses, minimizing cache line
+splits and cache-to-register latency.</p>
+<h3 id="work-group-and-stride-configuration">Work-Group and Stride
+Configuration</h3>
+<p>To maximize explicit vectorization on a CPU, kernels should process
+multiple elements per work-item:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> vector_add<span class="op">(</span>__global <span class="dt">const</span> <span class="dt">float</span><span class="op">*</span> a<span class="op">,</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>                         __global <span class="dt">const</span> <span class="dt">float</span><span class="op">*</span> b<span class="op">,</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>                         __global <span class="dt">float</span><span class="op">*</span> c<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> id <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Each work-item handles 8 elements concurrently</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    float8 va <span class="op">=</span> vload8<span class="op">(</span>id<span class="op">,</span> a<span class="op">);</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    float8 vb <span class="op">=</span> vload8<span class="op">(</span>id<span class="op">,</span> b<span class="op">);</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    float8 vc <span class="op">=</span> va <span class="op">+</span> vb<span class="op">;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    vstore8<span class="op">(</span>vc<span class="op">,</span> id<span class="op">,</span> c<span class="op">);</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>In this setup, each OpenCL work-item directly corresponds to one
+hardware vector instruction cycle per arithmetic operation. The global
+work size is reduced by a factor of 8, drastically lowering runtime
+thread-management overhead and ensuring optimal instruction pipeline
+saturation on CPU compute cores.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

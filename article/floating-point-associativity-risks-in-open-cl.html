@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floating-Point Associativity Risks in OpenCL - opencl</title>
+    <meta name="description" content="Assuming floating-point arithmetic is associative during parallel OpenCL reductions introduces critical numerical errors, run-to-run non-determinism, and catastrophic cancellation. While pure real numbers follow the associative law $(a + b) + c = a + (b">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/floating-point-associativity-risks-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Floating-Point Associativity Risks in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/floating-point-associativity-risks-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Assuming floating-point arithmetic is associative during parallel OpenCL reductions introduces critical numerical errors, run-to-run non-determinism, and catastrophic cancellation. While pure real numbers follow the associative law $(a + b) + c = a + (b" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="floating-point-associativity-risks-in-opencl">Floating-Point
+Associativity Risks in OpenCL</h1>
+<p>Assuming floating-point arithmetic is associative during parallel
+OpenCL reductions introduces critical numerical errors, run-to-run
+non-determinism, and catastrophic cancellation. While pure real numbers
+follow the associative law <span class="math inline">\((a + b) + c = a +
+(b + c)\)</span>, computer hardware relies on finite-precision
+representations such as IEEE 754. In parallel execution environments,
+changing the execution order of operations fundamentally alters rounding
+behaviors. This article details the primary computational risks
+associated with this false assumption and provides actionable strategies
+to mitigate them in high-performance GPU kernels.</p>
+<h2 id="the-root-cause-ieee-754-non-associativity">The Root Cause: IEEE
+754 Non-Associativity</h2>
+<p>Standard mathematical addition guarantees that grouping does not
+affect the sum. Floating-point arithmetic breaks this rule due to
+limited significand precision. Every intermediate calculation must be
+rounded to fit within the designated bits (24 bits for single-precision
+<code>float</code>, 53 bits for double-precision
+<code>double</code>).</p>
+<p>When adding a very small number to a very large number, the smaller
+value's lower-order bits are shifted out of the significand and
+discarded. If multiple small numbers are accumulated first, their
+collective sum might grow large enough to survive addition to the large
+number. If they are added individually to the large number across
+various stages of a reduction tree, their contributions may be
+completely wiped out.</p>
+<h2 id="key-risks-in-opencl-parallel-reductions">Key Risks in OpenCL
+Parallel Reductions</h2>
+<h3 id="1-non-deterministic-results-across-runs">1. Non-Deterministic
+Results Across Runs</h3>
+<p>Parallel reductions in OpenCL partition arrays across work-items,
+sub-groups, and work-groups. Because GPU schedulers dynamically allocate
+compute units and work-groups based on runtime availability, the precise
+sequence and pairing of additions can vary between executions of the
+same kernel on the exact same dataset. This produces subtle,
+non-deterministic output variations that make software debugging,
+testing, and verification extremely difficult.</p>
+<h3 id="2-cross-device-inconsistency">2. Cross-Device Inconsistency</h3>
+<p>An OpenCL kernel is written to run across diverse hardware targets,
+including GPUs from different vendors, multi-core CPUs, and specialized
+accelerators. These devices implement different:</p>
+<ul>
+<li>Work-group sizes and local memory configurations</li>
+<li>Wavefront/warp sizes (e.g., 32 threads on NVIDIA vs. 64 on AMD)</li>
+<li>Sub-group reduction primitives and hardware accumulation
+instructions (such as Fused Multiply-Add)</li>
+</ul>
+<p>Because the hardware topology dictates the reduction tree structure,
+running identical OpenCL code across different devices will yield
+differing results, breaking cross-platform parity.</p>
+<h3 id="3-catastrophic-cancellation">3. Catastrophic Cancellation</h3>
+<p>When subtracting nearly equal numbers or summing mixed-sign data,
+intermediate rounding can cause catastrophic cancellation. If a parallel
+reduction clusters positive and negative values haphazardly, large
+intermediate sums can wipe out precision before the offsetting values
+are introduced. In the worst cases, the final result can lose all
+significant digits, producing an answer off by several orders of
+magnitude.</p>
+<h3 id="4-convergence-failures-in-iterative-algorithms">4. Convergence
+Failures in Iterative Algorithms</h3>
+<p>Many scientific simulations, machine learning models, and linear
+algebra solvers (such as the Conjugate Gradient method) rely on
+reductions to calculate inner products, norms, or loss metrics. A
+reduction that fluctuates by even a fraction of a percent due to
+non-associativity can cause:</p>
+<ul>
+<li>Termination criteria to trigger prematurely or not at all</li>
+<li>Optimization algorithms to bounce around local minima</li>
+<li>Numerical drift that destabilizes time-stepped physical
+simulations</li>
+</ul>
+<h3 id="5-compiler-optimization-side-effects">5. Compiler Optimization
+Side Effects</h3>
+<p>OpenCL C compilers frequently apply aggressive optimizations when
+flags like <code>-cl-mad-enable</code> or
+<code>-cl-fast-relaxed-math</code> are specified. These flags explicitly
+authorize the compiler to disregard IEEE 754 compliance and reorder
+floating-point operations arbitrarily. While this maximizes memory
+throughput and instruction-level parallelism, it amplifies numerical
+unpredictability by reorganizing math operations at both the compiler
+and hardware dispatch levels.</p>
+<h2 id="mitigation-strategies">Mitigation Strategies</h2>
+<p>To handle reductions safely without sacrificing excessive
+performance, use the following techniques:</p>
+<ul>
+<li><strong>Compensated Summation (Kahan/Neumaier):</strong> Implement
+Kahan or Neumaier summation algorithms within local work-group
+reductions to track and reintroduce lost lower-order bits.</li>
+<li><strong>Higher-Precision Accumulation:</strong> Read
+single-precision inputs (<code>float</code>) but accumulate intermediate
+results using double-precision (<code>double</code>) variables in local
+memory.</li>
+<li><strong>Fixed Reduction Topologies:</strong> Enforce deterministic
+tree-based reduction patterns where work-items strictly pair data
+according to fixed indices rather than dynamic runtime scheduling.</li>
+<li><strong>Pre-Sorting by Magnitude:</strong> When absolute precision
+is mandatory, sort inputs by magnitude prior to the reduction phase so
+that values of similar magnitude are combined first.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

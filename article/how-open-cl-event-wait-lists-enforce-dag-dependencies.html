@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How OpenCL Event-Wait-Lists Enforce DAG Dependencies - opencl</title>
+    <meta name="description" content="OpenCL relies on event-wait-lists to manage fine-grained synchronization across asynchronous operations executed on heterogeneous compute devices. By associating each enqueued command with an event object and passing sets of prerequisite events into subs">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-open-cl-event-wait-lists-enforce-dag-dependencies">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How OpenCL Event-Wait-Lists Enforce DAG Dependencies - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-open-cl-event-wait-lists-enforce-dag-dependencies" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL relies on event-wait-lists to manage fine-grained synchronization across asynchronous operations executed on heterogeneous compute devices. By associating each enqueued command with an event object and passing sets of prerequisite events into subs" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-opencl-event-wait-lists-enforce-dag-dependencies">How OpenCL
+Event-Wait-Lists Enforce DAG Dependencies</h1>
+<p>OpenCL relies on event-wait-lists to manage fine-grained
+synchronization across asynchronous operations executed on heterogeneous
+compute devices. By associating each enqueued command with an event
+object and passing sets of prerequisite events into subsequent commands,
+developers can model and enforce complex Directed Acyclic Graph (DAG)
+execution flows without stalling the host CPU.</p>
+<h3 id="understanding-opencl-events-and-wait-lists">Understanding OpenCL
+Events and Wait-Lists</h3>
+<p>In OpenCL, operations such as kernel executions
+(<code>clEnqueueNDRangeKernel</code>) and memory copies
+(<code>clEnqueueReadBuffer</code>, <code>clEnqueueCopyBuffer</code>) are
+asynchronous. When a command is enqueued, the API optionally returns a
+<code>cl_event</code> object representing that specific operation.</p>
+<p>An event tracks the lifetime and state of a command through four
+stages:</p>
+<ol type="1">
+<li><code>CL_QUEUED</code>: The command is placed in the command
+queue.</li>
+<li><code>CL_SUBMITTED</code>: The command is sent to the target
+device.</li>
+<li><code>CL_RUNNING</code>: The device is currently executing the
+command.</li>
+<li><code>CL_COMPLETE</code>: The command has finished execution.</li>
+</ol>
+<p>An <strong>event-wait-list</strong> is an array of
+<code>cl_event</code> pointers passed into an enqueue function via the
+<code>num_events_in_wait_list</code> and <code>event_wait_list</code>
+arguments. The OpenCL runtime guarantees that the newly enqueued command
+will not begin execution until every event in its wait-list reaches the
+<code>CL_COMPLETE</code> status.</p>
+<h3 id="modeling-dag-dependencies">Modeling DAG Dependencies</h3>
+<p>A Directed Acyclic Graph represents workflows where nodes are tasks
+and directed edges are execution dependencies. In an OpenCL DAG:</p>
+<ul>
+<li><strong>Nodes</strong> are discrete commands enqueued to a device
+(e.g., data upload, Kernel A, Kernel B, data download).</li>
+<li><strong>Edges</strong> are directed precedence constraints defined
+by events linking parent tasks to child tasks.</li>
+</ul>
+<p>Because events uniquely identify the completion of specific nodes,
+they allow execution trees to diverge (fan-out) and converge (fan-in)
+dynamically.</p>
+<h4 id="fan-out-one-to-many-dependencies">Fan-Out (One-to-Many
+Dependencies)</h4>
+<p>A single operation can serve as the prerequisite for multiple
+downstream operations. For instance, after transferring an initial
+dataset to the device, an event <code>E_init</code> is returned.
+Multiple independent kernels can be enqueued simultaneously, each
+including <code>E_init</code> in their respective wait-lists:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Step 1: Initial upload generates E_init</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>clEnqueueWriteBuffer<span class="op">(</span>queue<span class="op">,</span> buffer<span class="op">,</span> CL_FALSE<span class="op">,</span> <span class="op">...,</span> <span class="dv">0</span><span class="op">,</span> NULL<span class="op">,</span> <span class="op">&amp;</span>E_init<span class="op">);</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Step 2: Kernels A and B branch out; both wait for E_init</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>cl_event wait_init<span class="op">[]</span> <span class="op">=</span> <span class="op">{</span> E_init <span class="op">};</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>clEnqueueNDRangeKernel<span class="op">(</span>queue<span class="op">,</span> kernelA<span class="op">,</span> <span class="op">...,</span> <span class="dv">1</span><span class="op">,</span> wait_init<span class="op">,</span> <span class="op">&amp;</span>E_kernelA<span class="op">);</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>clEnqueueNDRangeKernel<span class="op">(</span>queue<span class="op">,</span> kernelB<span class="op">,</span> <span class="op">...,</span> <span class="dv">1</span><span class="op">,</span> wait_init<span class="op">,</span> <span class="op">&amp;</span>E_kernelB<span class="op">);</span></span></code></pre></div>
+<p>Kernels A and B can now execute concurrently if device resources
+allow.</p>
+<h4 id="fan-in-many-to-one-dependencies">Fan-In (Many-to-One
+Dependencies)</h4>
+<p>When downstream tasks require results from multiple preceding tasks,
+an event-wait-list aggregates several completion events into a single
+barrier condition:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Step 3: Kernel C requires both Kernel A and Kernel B to complete</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>cl_event wait_AB<span class="op">[]</span> <span class="op">=</span> <span class="op">{</span> E_kernelA<span class="op">,</span> E_kernelB <span class="op">};</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>clEnqueueNDRangeKernel<span class="op">(</span>queue<span class="op">,</span> kernelC<span class="op">,</span> <span class="op">...,</span> <span class="dv">2</span><span class="op">,</span> wait_AB<span class="op">,</span> <span class="op">&amp;</span>E_kernelC<span class="op">);</span></span></code></pre></div>
+<p>Kernel C remains blocked until both <code>E_kernelA</code> and
+<code>E_kernelB</code> transition to <code>CL_COMPLETE</code>,
+preserving data integrity across execution paths.</p>
+<h3 id="cross-queue-and-out-of-order-synchronization">Cross-Queue and
+Out-of-Order Synchronization</h3>
+<p>Event-wait-lists provide two primary capabilities that make DAG
+execution robust:</p>
+<ol type="1">
+<li><strong>Out-of-Order Execution Queues:</strong> By default, standard
+OpenCL queues execute commands in order (FIFO). When creating a queue
+with <code>CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE</code>, commands
+execute as soon as resources and dependencies permit. In this mode,
+event-wait-lists are the sole mechanism controlling execution order,
+maximizing hardware utilization.</li>
+<li><strong>Inter-Queue Synchronization:</strong> Events generated in
+one command queue can be placed into the event-wait-list of a command in
+an entirely different queue, even if the queues target different
+physical devices (e.g., synchronization between an integrated GPU and a
+discrete GPU within the same OpenCL context).</li>
+</ol>
+<h3 id="memory-management-and-cleanup">Memory Management and
+Cleanup</h3>
+<p>Events consume runtime resources. For every retained event returned
+by an enqueue call, the host application must call
+<code>clReleaseEvent</code> once the event is no longer needed in
+subsequent wait-lists. Releasing an event decouples host-side tracking
+while permitting the device to safely discard internal metadata once
+dependent commands finish execution.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

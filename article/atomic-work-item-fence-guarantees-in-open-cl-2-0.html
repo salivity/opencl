@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>atomic_work_item_fence Guarantees in OpenCL 2.0 - opencl</title>
+    <meta name="description" content="In OpenCL 2.0, the atomicworkitemfence function enforces explicit memory ordering and synchronization constraints across work-items without requiring a direct read-modify-write operation. By acting as a standalone memory barrier, it ensures that memory o">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/atomic-work-item-fence-guarantees-in-open-cl-2-0">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="atomic_work_item_fence Guarantees in OpenCL 2.0 - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/atomic-work-item-fence-guarantees-in-open-cl-2-0" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL 2.0, the atomicworkitemfence function enforces explicit memory ordering and synchronization constraints across work-items without requiring a direct read-modify-write operation. By acting as a standalone memory barrier, it ensures that memory o" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1
+id="atomic_work_item_fence-guarantees-in-opencl-20">atomic_work_item_fence
+Guarantees in OpenCL 2.0</h1>
+<p>In OpenCL 2.0, the <code>atomic_work_item_fence</code> function
+enforces explicit memory ordering and synchronization constraints across
+work-items without requiring a direct read-modify-write operation. By
+acting as a standalone memory barrier, it ensures that memory operations
+initiated by a work-item become visible to other work-items according to
+predefined memory scopes and ordering semantics. This article details
+the synchronization guarantees provided by
+<code>atomic_work_item_fence</code>, covering its memory domain flags,
+ordering consistency models, visibility scopes, and how it establishes
+formal "happens-before" relationships.</p>
+<h3 id="function-signature-and-core-mechanism">Function Signature and
+Core Mechanism</h3>
+<p>The function is defined as:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> atomic_work_item_fence<span class="op">(</span>cl_mem_fence_flags flags<span class="op">,</span> </span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>                            memory_order order<span class="op">,</span> </span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>                            memory_scope scope<span class="op">);</span></span></code></pre></div>
+<p>Unlike basic work-group barriers (<code>work_group_barrier</code>),
+which also synchronize execution flow,
+<code>atomic_work_item_fence</code> synchronizes memory operations
+exclusively. Work-items do not wait for each other to reach the fence;
+instead, the fence restricts the hardware and compiler from reordering
+memory accesses across the fence boundary.</p>
+<h3 id="memory-domain-guarantees-flags">Memory Domain Guarantees
+(<code>flags</code>)</h3>
+<p>The <code>flags</code> argument determines which address spaces are
+affected by the fence:</p>
+<ul>
+<li><strong><code>CLK_GLOBAL_MEM_FENCE</code></strong>: Enforces
+ordering for loads and stores to global memory.</li>
+<li><strong><code>CLK_LOCAL_MEM_FENCE</code></strong>: Enforces ordering
+for loads and stores to local (shared) memory.</li>
+<li><strong><code>CLK_IMAGE_MEM_FENCE</code></strong>: Enforces ordering
+for reads and writes to OpenCL image objects.</li>
+</ul>
+<p>Bitwise OR operations can combine these flags (e.g.,
+<code>CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE</code>) to enforce
+simultaneous ordering guarantees across multiple memory regions.</p>
+<h3 id="memory-ordering-semantics-order">Memory Ordering Semantics
+(<code>order</code>)</h3>
+<p>OpenCL 2.0 adopts the C11/C++11 memory model. The <code>order</code>
+parameter defines how operations before and after the fence are ordered
+relative to one another:</p>
+<ul>
+<li><strong><code>memory_order_relaxed</code></strong>: Provides no
+ordering guarantees. It ensures atomicity if used with atomic variables,
+but memory accesses can freely move across the fence.</li>
+<li><strong><code>memory_order_acquire</code></strong>: Prevents
+subsequent reads and writes in the program order from being hoisted
+before the fence. It is typically paired with an atomic read to ensure
+data updated by another work-item becomes visible.</li>
+<li><strong><code>memory_order_release</code></strong>: Prevents
+preceding reads and writes in the program order from being sunk after
+the fence. It is used before an atomic write to publish shared data
+safely.</li>
+<li><strong><code>memory_order_acq_rel</code></strong>: Combines both
+acquire and release semantics. Preceding memory accesses cannot pass
+below the fence, and subsequent memory accesses cannot pass above
+it.</li>
+<li><strong><code>memory_order_seq_cst</code> (Sequentially
+Consistent)</strong>: Enforces <code>memory_order_acq_rel</code>
+guarantees while also guaranteeing a globally consistent total ordering
+of all sequentially consistent operations across the specified
+scope.</li>
+</ul>
+<h3 id="scope-guarantees-scope">Scope Guarantees
+(<code>scope</code>)</h3>
+<p>The <code>scope</code> parameter defines the boundary within the
+execution hierarchy where the ordering guarantees apply:</p>
+<ul>
+<li><strong><code>memory_scope_work_item</code></strong>: Ordering is
+restricted solely to the calling work-item. It prevents compiler
+reordering but does not synchronize across execution units.</li>
+<li><strong><code>memory_scope_work_group</code></strong>: Guarantees
+that the ordering constraints are visible to all work-items within the
+same work-group.</li>
+<li><strong><code>memory_scope_device</code></strong>: Guarantees
+visibility and ordering across all work-groups executing on the same
+OpenCL device.</li>
+<li><strong><code>memory_scope_all_svm_devices</code></strong>: Extends
+ordering guarantees across multiple devices and the host CPU within a
+Shared Virtual Memory (SVM) system.</li>
+</ul>
+<h3 id="establishing-the-synchronizes-with-relationship">Establishing
+the "Synchronizes-With" Relationship</h3>
+<p>A standalone fence does not synchronize with another standalone fence
+on its own. Instead, <code>atomic_work_item_fence</code> establishes an
+inter-thread synchronization sequence when paired with atomic
+operations:</p>
+<ol type="1">
+<li><strong>Release Sequence</strong>: Work-item A writes non-atomic or
+atomic data to memory, executes
+<code>atomic_work_item_fence(..., memory_order_release, scope)</code>,
+and then performs an atomic write (even with
+<code>memory_order_relaxed</code>) to a flag variable.</li>
+<li><strong>Acquire Sequence</strong>: Work-item B reads the flag
+variable using an atomic read (even with
+<code>memory_order_relaxed</code>), evaluates the condition, and
+immediately executes
+<code>atomic_work_item_fence(..., memory_order_acquire, scope)</code>.</li>
+</ol>
+<p>When Work-item B observes the value written by Work-item A, a
+<strong>synchronizes-with</strong> relationship is established.
+Consequently, all memory operations performed by Work-item A prior to
+its release fence are guaranteed to happen-before and be fully visible
+to any memory operations executed by Work-item B after its acquire
+fence.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

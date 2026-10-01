@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asynchronous P2P Memory Copy Between OpenCL GPUs - opencl</title>
+    <meta name="description" content="Asynchronous peer-to-peer (P2P) memory copy between co-located OpenCL GPUs enables direct, high-bandwidth data transfers across devices without routing through host system RAM, while simultaneously overlapping communication with computation. In multi-GPU">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/asynchronous-p-2-p-memory-copy-between-open-cl-gp-us">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Asynchronous P2P Memory Copy Between OpenCL GPUs - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/asynchronous-p-2-p-memory-copy-between-open-cl-gp-us" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Asynchronous peer-to-peer (P2P) memory copy between co-located OpenCL GPUs enables direct, high-bandwidth data transfers across devices without routing through host system RAM, while simultaneously overlapping communication with computation. In multi-GPU" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="asynchronous-p2p-memory-copy-between-opencl-gpus">Asynchronous
+P2P Memory Copy Between OpenCL GPUs</h1>
+<p>Asynchronous peer-to-peer (P2P) memory copy between co-located OpenCL
+GPUs enables direct, high-bandwidth data transfers across devices
+without routing through host system RAM, while simultaneously
+overlapping communication with computation. In multi-GPU systems, this
+mechanism eliminates the host memory bottleneck, reduces latency, frees
+the CPU from transfer management, and maximizes total computational
+throughput across distributed workloads.</p>
+<h3 id="eliminating-the-host-memory-bottleneck">Eliminating the Host
+Memory Bottleneck</h3>
+<p>In standard multi-GPU setups without P2P capabilities, sharing data
+between two GPUs requires a two-step staging process: transferring data
+from the source GPU to host system RAM, and then from host RAM to the
+destination GPU. This approach halves effective bandwidth and saturates
+the CPU's memory bus.</p>
+<p>P2P memory copy leverages PCIe peer-to-peer routing or high-speed
+interconnects (such as NVLink) to allow one GPU to read from or write
+directly to the physical memory of a co-located GPU. By removing host
+system RAM from the data path, data travel time is significantly
+shortened, and interconnect bandwidth is utilized at full theoretical
+capacity.</p>
+<h3 id="enabling-compute-and-transfer-overlap">Enabling Compute and
+Transfer Overlap</h3>
+<p>The asynchronous nature of P2P transfers is critical for
+high-performance computing. When a P2P transfer is enqueued in OpenCL,
+the call returns execution control to the host application immediately,
+without waiting for the physical data transmission to complete.</p>
+<p>Because modern GPUs feature dedicated DMA (Direct Memory Access)
+engines distinct from their compute engines (stream cores or compute
+units), an asynchronous copy can execute concurrently with active kernel
+executions:</p>
+<ul>
+<li><strong>Kernel-to-Communication Overlap:</strong> A destination GPU
+can execute a compute kernel on an existing dataset while simultaneously
+receiving the next dataset from a neighboring GPU via its copy
+engine.</li>
+<li><strong>Non-blocking Pipelines:</strong> High-performance processing
+pipelines—such as distributed neural network training or multi-GPU
+stencil computing—can hide communication latencies entirely beneath the
+duration of long-running compute kernels.</li>
+</ul>
+<h3 id="event-driven-synchronization">Event-Driven Synchronization</h3>
+<p>Asynchronous operations necessitate robust coordination to prevent
+race conditions. OpenCL facilitates this via its event model
+(<code>cl_event</code>). Developers can enqueue P2P memory operations
+across different command queues assigned to different devices, using
+event wait lists to guarantee ordering.</p>
+<p>For example, a copy command can be instructed to wait on the
+completion event of a kernel on GPU 0, while a subsequent compute kernel
+on GPU 1 waits on the completion event of that same transfer. This
+orchestration occurs with microsecond precision directly managed by GPU
+drivers and hardware, avoiding costly CPU polling loops.</p>
+<h3 id="cpu-offloading-and-system-scalability">CPU Offloading and System
+Scalability</h3>
+<p>Offloading inter-device communication from the CPU to dedicated
+hardware DMA controllers preserves host CPU cycles and memory bandwidth.
+The host CPU acts solely as an orchestrator, dispatching command queues
+rather than actively copying data buffers. This resource conservation is
+vital in dense multi-GPU compute nodes, where the host processor must
+manage network I/O, disk storage pipelines, and system scheduling
+without becoming the application's primary bottleneck.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

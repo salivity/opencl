@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How clSVMAlloc Allocates Shared Virtual Memory - opencl</title>
+    <meta name="description" content="This article provides an overview of how the clSVMAlloc function operates within the OpenCL framework to allocate Shared Virtual Memory (SVM) blocks. It covers the core function signature, how the OpenCL runtime coordinates with the operating system and">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-cl-svm-alloc-allocates-shared-virtual-memory">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How clSVMAlloc Allocates Shared Virtual Memory - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-cl-svm-alloc-allocates-shared-virtual-memory" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article provides an overview of how the clSVMAlloc function operates within the OpenCL framework to allocate Shared Virtual Memory (SVM) blocks. It covers the core function signature, how the OpenCL runtime coordinates with the operating system and" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-clsvmalloc-allocates-shared-virtual-memory">How clSVMAlloc
+Allocates Shared Virtual Memory</h1>
+<p>This article provides an overview of how the <code>clSVMAlloc</code>
+function operates within the OpenCL framework to allocate Shared Virtual
+Memory (SVM) blocks. It covers the core function signature, how the
+OpenCL runtime coordinates with the operating system and device drivers
+to create unified virtual address mappings, the distinction between
+allocation modes such as coarse-grain and fine-grain buffers, and the
+proper lifecycle management of allocated pointers.</p>
+<h3 id="the-role-of-clsvmalloc-in-opencl">The Role of clSVMAlloc in
+OpenCL</h3>
+<p>Introduced in OpenCL 2.0, <code>clSVMAlloc</code> allows the host
+program to allocate a contiguous block of memory within an OpenCL
+context that shares a unified virtual address space between the host CPU
+and compute devices (such as GPUs). Unlike traditional OpenCL memory
+allocations that yield an abstract <code>cl_mem</code> handle,
+<code>clSVMAlloc</code> returns a standard C/C++ void pointer
+(<code>void*</code>). This allows both the host and OpenCL kernels to
+access the exact same pointer address directly, simplifying complex data
+structures such as linked lists and trees without manual pointer
+serialization.</p>
+<h3 id="function-signature-and-parameters">Function Signature and
+Parameters</h3>
+<p>The function is defined as follows:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span><span class="op">*</span> clSVMAlloc<span class="op">(</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    cl_context context<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    cl_svm_mem_flags flags<span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> size<span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    cl_uint alignment</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<ul>
+<li><strong><code>context</code></strong>: A valid OpenCL context within
+which the memory is allocated. All devices within this context that
+support the requested SVM level can access this allocation.</li>
+<li><strong><code>flags</code></strong>: A bitfield specifying
+read/write permissions and SVM configurations:
+<ul>
+<li><code>CL_MEM_READ_WRITE</code>, <code>CL_MEM_WRITE_ONLY</code>,
+<code>CL_MEM_READ_ONLY</code>: Define memory access permissions for
+compute devices.</li>
+<li><code>CL_MEM_SVM_FINE_GRAIN_BUFFER</code>: Requests fine-grained
+memory sharing, enabling concurrent host and device access without
+explicit mapping operations.</li>
+<li><code>CL_MEM_SVM_ATOMICS</code>: Enables OpenCL atomic operations to
+synchronize memory accesses across host CPU and OpenCL device
+threads.</li>
+</ul></li>
+<li><strong><code>size</code></strong>: The size in bytes of the memory
+block to allocate.</li>
+<li><strong><code>alignment</code></strong>: Minimum alignment
+requirement in bytes. It must be a power of two or <code>0</code>. If
+set to <code>0</code>, the implementation defaults to the largest
+alignment required by any OpenCL data type supported by the context
+devices.</li>
+</ul>
+<h3 id="underlying-allocation-mechanics">Underlying Allocation
+Mechanics</h3>
+<p>When <code>clSVMAlloc</code> executes, the OpenCL runtime performs
+several steps to reserve and configure the memory block:</p>
+<ol type="1">
+<li><strong>Virtual Address Space Reservation</strong>: The host driver
+communicates with the operating system's virtual memory manager (VMM)
+and the device's Memory Management Unit (IOMMU/GPU MMU). It reserves an
+identical virtual address range that is mutually valid on both the host
+processor and the accelerator's execution pipelines.</li>
+<li><strong>Buffer Grain Configuration</strong>:
+<ul>
+<li><strong>Coarse-Grain SVM</strong>: If
+<code>CL_MEM_SVM_FINE_GRAIN_BUFFER</code> is omitted, the runtime
+allocates a coarse-grain buffer. Memory coherency is not maintained
+automatically by hardware. The host must call
+<code>clEnqueueSVMMap</code> and <code>clEnqueueSVMUnmap</code> around
+host-side reads and writes to synchronize data boundaries with the
+device.</li>
+<li><strong>Fine-Grain SVM</strong>: When
+<code>CL_MEM_SVM_FINE_GRAIN_BUFFER</code> is set, the allocation
+utilizes hardware page-faulting or cache coherency interconnects (such
+as PCIe features or unified CPU-GPU architectures). Host and device
+threads can concurrently read and modify data without explicit
+synchronization calls.</li>
+</ul></li>
+<li><strong>Physical Page Binding</strong>: The allocation can be backed
+either lazily through page faults upon first access or pinned
+immediately into physical system memory, depending on the underlying
+driver and hardware architecture.</li>
+</ol>
+<h3 id="memory-deallocation">Memory Deallocation</h3>
+<p>Memory blocks allocated via <code>clSVMAlloc</code> are not managed
+by the standard C runtime and must not be freed with
+<code>free()</code>. Instead, applications must use
+<code>clSVMFree</code> to return the virtual addresses and underlying
+physical pages to the system:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> clSVMFree<span class="op">(</span>cl_context context<span class="op">,</span> <span class="dt">void</span><span class="op">*</span> svm_pointer<span class="op">);</span></span></code></pre></div>
+<p>For non-blocking or queued deallocations that synchronize with device
+execution, OpenCL also provides <code>clEnqueueSVMFree</code>, which
+ensures the memory is only released once preceding device commands have
+completed.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

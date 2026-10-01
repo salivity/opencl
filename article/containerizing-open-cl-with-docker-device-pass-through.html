@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Containerizing OpenCL with Docker Device Pass-Through - opencl</title>
+    <meta name="description" content="Containerizing OpenCL compute jobs allows developers to package complex scientific, machine learning, and image-processing workloads into reproducible environments while maintaining bare-metal execution speeds. Achieving this requires exposing the host's">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/containerizing-open-cl-with-docker-device-pass-through">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Containerizing OpenCL with Docker Device Pass-Through - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/containerizing-open-cl-with-docker-device-pass-through" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Containerizing OpenCL compute jobs allows developers to package complex scientific, machine learning, and image-processing workloads into reproducible environments while maintaining bare-metal execution speeds. Achieving this requires exposing the host's" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1
+id="containerizing-opencl-with-docker-device-pass-through">Containerizing
+OpenCL with Docker Device Pass-Through</h1>
+<p>Containerizing OpenCL compute jobs allows developers to package
+complex scientific, machine learning, and image-processing workloads
+into reproducible environments while maintaining bare-metal execution
+speeds. Achieving this requires exposing the host's underlying hardware
+interfaces to the Docker container and configuring the user-space
+Installable Client Driver (ICD) runtime. This guide explains how to
+properly configure Docker device flags, set up vendor-specific
+user-space drivers, and ensure zero-overhead hardware pass-through for
+Intel, AMD, and NVIDIA accelerators.</p>
+<h2 id="prerequisites-on-the-host-system">Prerequisites on the Host
+System</h2>
+<p>Before configuring Docker, the host system must have the appropriate
+kernel modules and hardware drivers operational. The host must already
+be capable of executing OpenCL workloads natively.</p>
+<ol type="1">
+<li>Ensure the GPU or accelerator is recognized by the kernel:
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">lspci</span> <span class="kw">|</span> <span class="fu">grep</span> <span class="at">-i</span> <span class="at">-E</span> <span class="st">&quot;vga|3d|display|compute&quot;</span></span></code></pre></div></li>
+<li>Verify that native OpenCL device query utilities like
+<code>clinfo</code> report your hardware properly on the host before
+attempting containerization.</li>
+</ol>
+<h2 id="passing-hardware-device-nodes">Passing Hardware Device
+Nodes</h2>
+<p>Docker isolates containers from the host hardware by default. To pass
+the necessary hardware devices without running the container in insecure
+<code>--privileged</code> mode, use specific <code>--device</code> flags
+corresponding to the accelerator architecture.</p>
+<h3 id="intel-gpus-intel-graphics-compute-runtime--neo">Intel GPUs
+(Intel Graphics Compute Runtime / NEO)</h3>
+<p>Intel integrated and discrete GPUs expose their interfaces via the
+Direct Rendering Manager (DRM).</p>
+<p>Pass the render and card nodes:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">--rm</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--device</span> /dev/dri:/dev/dri <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--group-add</span> video <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--group-add</span> render <span class="dt">\</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  opencl-intel-image clinfo</span></code></pre></div>
+<h3 id="amd-gpus-rocm--pal">AMD GPUs (ROCm / PAL)</h3>
+<p>AMD devices utilize both the Kernel Fusion Driver
+(<code>/dev/kfd</code>) for compute and the DRM render nodes for memory
+and display subsystems.</p>
+<p>Pass both nodes along with appropriate group permissions:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">--rm</span> <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--device</span> /dev/kfd <span class="dt">\</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--device</span> /dev/dri <span class="dt">\</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--group-add</span> video <span class="dt">\</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">--group-add</span> render <span class="dt">\</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  opencl-amd-image clinfo</span></code></pre></div>
+<h3 id="nvidia-gpus">NVIDIA GPUs</h3>
+<p>NVIDIA compute relies on the NVIDIA Container Toolkit instead of
+standard <code>/dev/dri</code> nodes. The toolkit dynamically injects
+host driver libraries and device files into the container.</p>
+<p>Run with the NVIDIA runtime enabled:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">--rm</span> <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--gpus</span> all <span class="dt">\</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  opencl-nvidia-image clinfo</span></code></pre></div>
+<h2 id="constructing-the-container-environment">Constructing the
+Container Environment</h2>
+<p>Passing device nodes provides hardware access, but the container must
+contain the user-space OpenCL runtime and the OpenCL Installable Client
+Driver (ICD) loader to interface with the kernel modules.</p>
+<h3 id="dockerfile-for-intel-opencl">Dockerfile for Intel OpenCL</h3>
+<p>For modern Intel processors (Broadwell and newer), use the Intel NEO
+open-source compute runtime:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode dockerfile"><code class="sourceCode dockerfile"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> ubuntu:22.04</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">ENV</span> DEBIAN_FRONTEND=noninteractive</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="kw">RUN</span> <span class="ex">apt-get</span> update <span class="kw">&amp;&amp;</span> <span class="ex">apt-get</span> install <span class="at">-y</span> <span class="dt">\</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    ocl-icd-libopencl1 <span class="dt">\</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    opencl-headers <span class="dt">\</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    clinfo <span class="dt">\</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    intel-opencl-icd <span class="dt">\</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">&amp;&amp;</span> <span class="fu">rm</span> <span class="at">-rf</span> /var/lib/apt/lists/<span class="pp">*</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="kw">CMD</span> [<span class="st">&quot;clinfo&quot;</span>]</span></code></pre></div>
+<h3 id="dockerfile-for-amd-rocm-opencl">Dockerfile for AMD ROCm
+OpenCL</h3>
+<p>For AMD Radeon or Instinct hardware, integrate the official ROCm
+repositories or runtime packages:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode dockerfile"><code class="sourceCode dockerfile"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> ubuntu:22.04</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="kw">ENV</span> DEBIAN_FRONTEND=noninteractive</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="kw">RUN</span> <span class="ex">apt-get</span> update <span class="kw">&amp;&amp;</span> <span class="ex">apt-get</span> install <span class="at">-y</span> <span class="dt">\</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    wget <span class="dt">\</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    gnupg2 <span class="dt">\</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    ca-certificates <span class="dt">\</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    ocl-icd-libopencl1 <span class="dt">\</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    clinfo</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Install AMD ROCm OpenCL runtime</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="kw">RUN</span> <span class="fu">wget</span> <span class="at">-qO</span> <span class="at">-</span> https://repo.radeon.com/rocm/rocm.gpg.key <span class="kw">|</span> <span class="ex">apt-key</span> add <span class="at">-</span> <span class="kw">&amp;&amp;</span> <span class="dt">\</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">echo</span> <span class="st">&#39;deb [arch=amd64] https://repo.radeon.com/rocm/apt/debian/ ubuntu main&#39;</span> <span class="kw">|</span> <span class="fu">tee</span> /etc/apt/sources.list.d/rocm.list <span class="kw">&amp;&amp;</span> <span class="dt">\</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="ex">apt-get</span> update <span class="kw">&amp;&amp;</span> <span class="ex">apt-get</span> install <span class="at">-y</span> <span class="dt">\</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    rocm-opencl-runtime <span class="kw">&amp;&amp;</span> <span class="dt">\</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>    <span class="fu">rm</span> <span class="at">-rf</span> /var/lib/apt/lists/<span class="pp">*</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a><span class="kw">CMD</span> [<span class="st">&quot;clinfo&quot;</span>]</span></code></pre></div>
+<h3 id="dockerfile-for-nvidia-opencl">Dockerfile for NVIDIA OpenCL</h3>
+<p>NVIDIA images should use the official CUDA base image, which
+configures the ICD entries automatically:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode dockerfile"><code class="sourceCode dockerfile"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> nvidia/cuda:12.2.0-base-ubuntu22.04</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">RUN</span> <span class="ex">apt-get</span> update <span class="kw">&amp;&amp;</span> <span class="ex">apt-get</span> install <span class="at">-y</span> <span class="dt">\</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    ocl-icd-libopencl1 <span class="dt">\</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    opencl-headers <span class="dt">\</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    clinfo <span class="dt">\</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">&amp;&amp;</span> <span class="fu">rm</span> <span class="at">-rf</span> /var/lib/apt/lists/<span class="pp">*</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Point the OpenCL ICD loader to the injected NVIDIA library</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="kw">RUN</span> <span class="fu">mkdir</span> <span class="at">-p</span> /etc/OpenCL/vendors <span class="kw">&amp;&amp;</span> <span class="dt">\</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="bu">echo</span> <span class="st">&quot;libnvidia-opencl.so.1&quot;</span> <span class="op">&gt;</span> /etc/OpenCL/vendors/nvidia.icd</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="kw">CMD</span> [<span class="st">&quot;clinfo&quot;</span>]</span></code></pre></div>
+<h2 id="managing-device-permissions">Managing Device Permissions</h2>
+<p>A common failure mode in containerized OpenCL jobs is a permission
+denied error when accessing <code>/dev/dri/renderD*</code> or
+<code>/dev/kfd</code>.</p>
+<ul>
+<li>Inspect the group IDs on the host:
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> <span class="at">-l</span> /dev/dri/renderD<span class="pp">*</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> <span class="at">-l</span> /dev/kfd</span></code></pre></div></li>
+<li>Typically, these belong to the <code>render</code> (GID often 110 or
+107) and <code>video</code> (GID 44) groups.</li>
+<li>Map these groups into the container execution by supplying
+<code>--group-add &lt;host_group_id&gt;</code> or
+<code>--group-add render</code> in your execution commands.</li>
+</ul>
+<h2 id="verifying-deployment">Verifying Deployment</h2>
+<p>Verify successful integration by executing <code>clinfo</code> inside
+the running container. The output should display the exact platform
+name, OpenCL C version, and target device (e.g.,
+<code>Intel(R) Graphics</code>, <code>AMD Radeon Graphics</code>, or
+<code>NVIDIA CUDA</code>) matching the host machine. If
+<code>clinfo</code> returns <code>Number of platforms: 0</code>, verify
+that the device files exist inside the container using
+<code>docker run &lt;flags&gt; &lt;image&gt; ls -la /dev/dri</code> and
+that the <code>/etc/OpenCL/vendors/*.icd</code> file is properly
+installed.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

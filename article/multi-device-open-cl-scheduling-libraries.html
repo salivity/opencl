@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Device OpenCL Scheduling Libraries - opencl</title>
+    <meta name="description" content="Managing heterogeneous hardware systems comprising CPUs, integrated GPUs, discrete GPUs, and accelerators requires robust orchestration to prevent resource starvation and minimize latency. This article explores the primary open-source runtime systems and">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/multi-device-open-cl-scheduling-libraries">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Multi-Device OpenCL Scheduling Libraries - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/multi-device-open-cl-scheduling-libraries" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Managing heterogeneous hardware systems comprising CPUs, integrated GPUs, discrete GPUs, and accelerators requires robust orchestration to prevent resource starvation and minimize latency. This article explores the primary open-source runtime systems and" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="multi-device-opencl-scheduling-libraries">Multi-Device OpenCL
+Scheduling Libraries</h1>
+<p>Managing heterogeneous hardware systems comprising CPUs, integrated
+GPUs, discrete GPUs, and accelerators requires robust orchestration to
+prevent resource starvation and minimize latency. This article explores
+the primary open-source runtime systems and orchestration libraries that
+automate multi-device scheduling and memory management for OpenCL
+backends, detailing how they handle task distribution, data transfers,
+and load balancing across diverse computing units.</p>
+<h2 id="the-complexity-of-manual-opencl-multi-device-management">The
+Complexity of Manual OpenCL Multi-Device Management</h2>
+<p>OpenCL provides standard abstractions for heterogeneous computing,
+but native multi-device utilization requires developers to manually
+construct distinct command queues, track data dependencies, balance
+compute loads, and synchronize memory buffers across multiple devices.
+Without an orchestration layer, scaling an application to multiple
+OpenCL devices introduces significant boilerplate code and increases the
+risk of pipeline stalls or race conditions. Automated orchestration
+runtimes abstract these concerns using task-based directed acyclic
+graphs (DAGs) and dynamic scheduling engines.</p>
+<h2 id="top-open-source-multi-device-opencl-orchestration-runtimes">Top
+Open-Source Multi-Device OpenCL Orchestration Runtimes</h2>
+<h3 id="1-starpu">1. StarPU</h3>
+<p>StarPU is a mature task-based runtime system developed by Inria
+designed specifically to coordinate heterogeneous architectures
+featuring CPUs, GPUs, and accelerators.</p>
+<ul>
+<li><strong>Scheduling Mechanisms:</strong> StarPU models execution as a
+task graph (DAG). Tasks represent kernels with defined memory footprints
+and dependencies. It features built-in dynamic schedulers, including
+Heterogeneous Earliest Finish Time (HEFT), minimum execution time
+estimation, and work-stealing heuristics.</li>
+<li><strong>OpenCL Support:</strong> StarPU maintains native support for
+OpenCL backends alongside CUDA and standard CPU threads. It
+automatically provisions OpenCL command queues across detected devices
+and handles asynchronous kernel launches.</li>
+<li><strong>Memory Management:</strong> It uses an internal
+software-managed cache coherency protocol (MSI/MOSI-like) that handles
+data transfers across discrete device memories, replicating data only
+when necessary and evicting cold buffers.</li>
+</ul>
+<h3 id="2-ompss-2">2. OmpSs-2</h3>
+<p>Developed by the Barcelona Supercomputing Center (BSC), OmpSs-2
+extends the OpenMP model to heterogeneous environments, using compiler
+directives and an asynchronous runtime to automate execution across
+heterogeneous hardware.</p>
+<ul>
+<li><strong>Scheduling Mechanisms:</strong> The runtime analyzes task
+dependencies dynamically at runtime via annotated directives
+(<code>#pragma oss task</code>). It schedules ready tasks onto the most
+suitable compute target based on device availability, historical
+execution times, and data affinity.</li>
+<li><strong>OpenCL Support:</strong> OmpSs-2 features an OpenCL target
+plugin that translates annotated code into asynchronous OpenCL tasks.
+The runtime manages device contexts, kernel compilation, and queue
+dispatch without manual intervention.</li>
+<li><strong>Memory Management:</strong> Memory movement between host
+memory and individual OpenCL device spaces is automatically coordinated
+using directional task pragmas (<code>in</code>, <code>out</code>,
+<code>inout</code>).</li>
+</ul>
+<h3 id="3-skepu">3. SkePU</h3>
+<p>SkePU is a high-level skeleton programming framework that abstracts
+parallel patterns (such as <code>Map</code>, <code>Reduce</code>,
+<code>Scan</code>, and <code>MapReduce</code>) for multi-core and
+multi-GPU architectures.</p>
+<ul>
+<li><strong>Scheduling Mechanisms:</strong> Instead of low-level task
+graphs, SkePU operates at the pattern level. It can dynamically
+decompose arrays and distribute execution across multiple OpenCL-capable
+devices.</li>
+<li><strong>OpenCL Support:</strong> It features both OpenCL and CUDA
+backends. When compiled with multi-device support, SkePU partitions
+container data across multiple queues and executes kernels concurrently
+across all available devices.</li>
+<li><strong>Tuning and Optimizations:</strong> SkePU includes an
+integrated machine-learning and heuristic auto-tuning mechanism that
+predicts whether a single GPU, multiple GPUs, or the host CPU will
+deliver the best throughput for a given input size.</li>
+</ul>
+<h3 id="4-hpx-high-performance-computing-in-c">4. HPX (High Performance
+Computing in C++)</h3>
+<p>HPX is an open-source, general-purpose C++ parallel programming
+library maintained by the STE||AR Group. It implements the C++ standard
+concurrency extensions and scales from multi-core chips to distributed
+supercomputers.</p>
+<ul>
+<li><strong>Scheduling Mechanisms:</strong> HPX replaces traditional
+threading models with an asynchronous execution graph driven by futures
+and dataflow components.</li>
+<li><strong>OpenCL Integration:</strong> Through community integrations
+such as HPXCL, HPX exposes OpenCL devices as asynchronous executors.
+This architecture allows developers to chain OpenCL kernel executions
+with CPU tasks via standard <code>hpx::future</code> constructs,
+enabling dynamic task migration and overlap of compute with I/O.</li>
+<li><strong>Work Distribution:</strong> Work is distributed across
+devices using an advanced work-stealing algorithm that prevents device
+starvation by moving deferred tasks between scheduler queues.</li>
+</ul>
+<h2 id="key-evaluation-criteria-for-selection">Key Evaluation Criteria
+for Selection</h2>
+<p>Selecting an orchestration framework for multi-device OpenCL
+pipelines depends on system requirements:</p>
+<ul>
+<li><strong>Directive-Driven vs. API-Driven:</strong> Teams seeking to
+minimize refactoring of existing C/C++ code typically select
+<strong>OmpSs-2</strong> for its pragma-driven syntax. For maximum
+programmatic control over task graphs and hardware mapping,
+<strong>StarPU</strong> provides the most configurable C-level runtime
+APIs.</li>
+<li><strong>Pattern Abstraction:</strong> Workloads dominated by
+standard data-parallel operations (such as array transformations or
+reductions) benefit from <strong>SkePU</strong>, which eliminates direct
+kernel programming while managing multi-device splits internally.</li>
+<li><strong>C++ Concurrency Integration:</strong> Projects built on
+modern standard C++ patterns benefit most from <strong>HPX</strong>, as
+it bridges OpenCL execution queues directly into modern standard library
+asynchronous constructs.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Profiling Timestamps in Command Queues - opencl</title>
+    <meta name="description" content="This article provides an overview of how OpenCL command queues utilize event profiling to capture high-resolution timestamps for performance tracing. By enabling profiling capabilities on a command queue and attaching event objects to queued commands, de">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-profiling-timestamps-in-command-queues">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Profiling Timestamps in Command Queues - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-profiling-timestamps-in-command-queues" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article provides an overview of how OpenCL command queues utilize event profiling to capture high-resolution timestamps for performance tracing. By enabling profiling capabilities on a command queue and attaching event objects to queued commands, de" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-profiling-timestamps-in-command-queues">OpenCL Profiling
+Timestamps in Command Queues</h1>
+<p>This article provides an overview of how OpenCL command queues
+utilize event profiling to capture high-resolution timestamps for
+performance tracing. By enabling profiling capabilities on a command
+queue and attaching event objects to queued commands, developers can
+extract precise timing information across different stages of execution.
+This allows for accurate measurement of queue latency, submission
+overhead, and actual hardware kernel execution time to diagnose
+performance bottlenecks.</p>
+<h3 id="enabling-profiling-on-the-command-queue">Enabling Profiling on
+the Command Queue</h3>
+<p>By default, an OpenCL command queue does not record execution
+timestamps to avoid unnecessary runtime overhead. To track timing
+metrics, you must explicitly enable profiling when creating the command
+queue.</p>
+<p>In OpenCL 2.0 and later, this is done by passing the
+<code>CL_QUEUE_PROFILING_ENABLE</code> flag within the property array to
+<code>clCreateCommandQueueWithProperties</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_queue_properties properties<span class="op">[]</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    CL_QUEUE_PROPERTIES<span class="op">,</span> </span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    CL_QUEUE_PROFILING_ENABLE<span class="op">,</span> </span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>cl_command_queue queue <span class="op">=</span> clCreateCommandQueueWithProperties<span class="op">(</span>context<span class="op">,</span> device<span class="op">,</span> properties<span class="op">,</span> <span class="op">&amp;</span>err<span class="op">);</span></span></code></pre></div>
+<p>For OpenCL 1.x, the flag is passed directly as a bitfield argument to
+<code>clCreateCommandQueue</code>.</p>
+<h3 id="capturing-events">Capturing Events</h3>
+<p>When an OpenCL command is enqueued—such as a kernel execution
+(<code>clEnqueueNDRangeKernel</code>) or a memory transfer
+(<code>clEnqueueReadBuffer</code>)—the API allows you to capture an
+associated event object by passing a pointer to a <code>cl_event</code>
+variable as the last parameter.</p>
+<p>When the queue has profiling enabled, the OpenCL runtime
+automatically associates timestamp records with this event object as the
+command progresses through its lifecycle.</p>
+<h3 id="the-four-profiling-timestamps">The Four Profiling
+Timestamps</h3>
+<p>OpenCL tracks four distinct states for each profiled command. Each
+timestamp is recorded as a 64-bit unsigned integer
+(<code>cl_ulong</code>) representing time in nanoseconds derived from a
+device-specific monotonic timer.</p>
+<ol type="1">
+<li><strong><code>CL_PROFILING_COMMAND_QUEUED</code></strong>: The point
+in time when the host CPU successfully enqueues the command into the
+host-side command queue.</li>
+<li><strong><code>CL_PROFILING_COMMAND_SUBMIT</code></strong>: The point
+in time when the host submits the command to the target device's
+internal processing queue.</li>
+<li><strong><code>CL_PROFILING_COMMAND_START</code></strong>: The exact
+moment the device starts executing the command or kernel.</li>
+<li><strong><code>CL_PROFILING_COMMAND_END</code></strong>: The exact
+moment the device finishes processing the command and results become
+available.</li>
+</ol>
+<h3 id="querying-profiling-data">Querying Profiling Data</h3>
+<p>Timestamps are queried after the command has fully finished
+execution. If you query an event before it reaches the
+<code>CL_COMPLETE</code> status, the query will fail. Developers
+typically call <code>clWaitForEvents</code> or <code>clFinish</code> to
+ensure the device has completed the operation.</p>
+<p>Data is extracted using <code>clGetEventProfilingInfo</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>cl_ulong time_queued<span class="op">,</span> time_submit<span class="op">,</span> time_start<span class="op">,</span> time_end<span class="op">;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>clGetEventProfilingInfo<span class="op">(</span>event<span class="op">,</span> CL_PROFILING_COMMAND_QUEUED<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>cl_ulong<span class="op">),</span> <span class="op">&amp;</span>time_queued<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>clGetEventProfilingInfo<span class="op">(</span>event<span class="op">,</span> CL_PROFILING_COMMAND_SUBMIT<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>cl_ulong<span class="op">),</span> <span class="op">&amp;</span>time_submit<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>clGetEventProfilingInfo<span class="op">(</span>event<span class="op">,</span> CL_PROFILING_COMMAND_START<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>cl_ulong<span class="op">),</span> <span class="op">&amp;</span>time_start<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>clGetEventProfilingInfo<span class="op">(</span>event<span class="op">,</span> CL_PROFILING_COMMAND_END<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>cl_ulong<span class="op">),</span> <span class="op">&amp;</span>time_end<span class="op">,</span> NULL<span class="op">);</span></span></code></pre></div>
+<h3 id="deriving-performance-metrics">Deriving Performance Metrics</h3>
+<p>Because the timestamps represent absolute values from an
+implementation-defined timebase, individual timestamp values are
+arbitrary on their own. Performance tracing relies on the differences
+between these timestamps:</p>
+<ul>
+<li><strong>Host-to-Device Queue Latency:</strong>
+<code>time_submit - time_queued</code><br />
+Measures how long a command waited in the software queue before
+submission to hardware.</li>
+<li><strong>Driver and Hardware Scheduling Overhead:</strong>
+<code>time_start - time_submit</code><br />
+Measures delay between submission and the actual start of execution on
+the compute units.</li>
+<li><strong>Pure Execution Time:</strong>
+<code>time_end - time_start</code><br />
+Measures the actual duration the kernel ran on the target hardware. This
+is the primary metric for GPU/accelerator compute performance.</li>
+<li><strong>Total Lifecycle Duration:</strong>
+<code>time_end - time_queued</code><br />
+Measures the entire turnaround time of the command from initial
+scheduling to completion.</li>
+</ul>
+<h3 id="key-considerations">Key Considerations</h3>
+<ul>
+<li><strong>Timer Resolution:</strong> You can determine the underlying
+precision of the device timer by querying <code>clGetDeviceInfo</code>
+with <code>CL_DEVICE_PROFILING_TIMER_RESOLUTION</code>, which returns
+the timer resolution in nanoseconds.</li>
+<li><strong>Cross-Device Comparison:</strong> Timestamps generated by
+different devices within the same context are not guaranteed to share
+the same clock origin. Therefore, you should not calculate time
+differences using timestamps from two different OpenCL devices.</li>
+<li><strong>Memory Management:</strong> Every <code>cl_event</code>
+created to capture profiling timestamps must be explicitly released
+using <code>clReleaseEvent</code> once the profiling data is extracted
+to prevent memory leaks.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

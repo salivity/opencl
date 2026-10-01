@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validating OpenCL with the Khronos CTS - opencl</title>
+    <meta name="description" content="Validating an OpenCL implementation ensures that hardware drivers and execution runtimes strictly adhere to standard specifications defined by the Khronos Group. Achieving official conformance requires running the OpenCL Conformance Test Suite (CTS) to c">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/validating-open-cl-with-the-khronos-cts">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Validating OpenCL with the Khronos CTS - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/validating-open-cl-with-the-khronos-cts" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Validating an OpenCL implementation ensures that hardware drivers and execution runtimes strictly adhere to standard specifications defined by the Khronos Group. Achieving official conformance requires running the OpenCL Conformance Test Suite (CTS) to c" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="validating-opencl-with-the-khronos-cts">Validating OpenCL with
+the Khronos CTS</h1>
+<p>Validating an OpenCL implementation ensures that hardware drivers and
+execution runtimes strictly adhere to standard specifications defined by
+the Khronos Group. Achieving official conformance requires running the
+OpenCL Conformance Test Suite (CTS) to certify functional correctness,
+API compliance, and cross-platform consistency. This guide details the
+essential tools, build frameworks, and companion utilities used to
+execute, automate, and verify OpenCL implementations against the
+official CTS.</p>
+<h3 id="the-khronos-opencl-cts-framework">The Khronos OpenCL CTS
+Framework</h3>
+<p>The primary tool for validation is the <strong>Khronos
+OpenCL-CTS</strong>, maintained as an open-source repository on GitHub
+by the Khronos Group. The CTS is not a single executable; rather, it is
+a comprehensive framework comprised of dozens of specialized sub-test
+suites. Key modules within the suite include:</p>
+<ul>
+<li><strong>API Tests:</strong> Validate platform and device discovery,
+context management, memory object handling, and command queue
+execution.</li>
+<li><strong>Compiler and Language Tests:</strong> Verify parsing, kernel
+compilation, OpenCL C built-in functions, vectors, and type
+conversions.</li>
+<li><strong>Math and Precision Verification:</strong> Rigorously
+validate floating-point accuracy, rounding modes, and standard
+mathematical functions against expected IEEE-754 precision limits.</li>
+<li><strong>Specialized Sub-Suites:</strong> Focus on atomics, images,
+pipes, SVM (Shared Virtual Memory), and sub-groups.</li>
+</ul>
+<h3 id="build-and-configuration-tools">Build and Configuration
+Tools</h3>
+<p>To generate the validation harness for a specific hardware target,
+developers rely on standardized build tools:</p>
+<ul>
+<li><strong>CMake:</strong> The official build generator for the CTS.
+CMake is used to locate target OpenCL headers, link against the OpenCL
+Installable Client Driver (ICD) loader or direct runtime library, and
+generate the native build files.</li>
+<li><strong>Host Compilers:</strong> Compilers such as GCC, Clang, or
+Microsoft Visual Studio (MSVC) build the test binaries. The choice of
+compiler depends on the host operating system (Linux, Windows, macOS, or
+embedded platforms like Android).</li>
+<li><strong>Git:</strong> Required to clone the repository along with
+its submodules, which often pull in corresponding versions of the
+OpenCL-Headers and OpenCL-ICD-Loader.</li>
+</ul>
+<h3 id="intermediate-validation-and-companion-tools">Intermediate
+Validation and Companion Tools</h3>
+<p>Because modern OpenCL specifications (particularly OpenCL 2.1, 2.2,
+and 3.0) heavily incorporate SPIR-V intermediate representation,
+companion tools are essential to the validation process:</p>
+<ul>
+<li><strong>SPIRV-Tools (<code>spirv-val</code>):</strong> Validates the
+correctness of SPIR-V binaries generated or consumed during kernel
+compilation tests.</li>
+<li><strong>SPIRV-LLVM-Translator:</strong> Bi-directional translator
+used to convert between LLVM IR and SPIR-V, often integrated into driver
+compiler toolchains to verify intermediate code generation before
+execution on the device.</li>
+<li><strong>OpenCL ICD Loader:</strong> Allows the CTS executables to
+run through standard platform-switching infrastructure, ensuring
+compatibility across multi-vendor environments.</li>
+</ul>
+<h3 id="automation-and-result-processing">Automation and Result
+Processing</h3>
+<p>Running the entire CTS can take hours or days depending on device
+compute capabilities. Teams utilize automation and analysis tools to
+handle execution:</p>
+<ul>
+<li><strong>CTest:</strong> Integrated directly with the CMake build,
+CTest allows developers to execute test subsets, track failures, and run
+tests in parallel where applicable.</li>
+<li><strong>Python Test Wrappers:</strong> The OpenCL-CTS includes
+Python scripts to orchestrate test runs, batch-execute entire suites,
+set execution timeouts, and parse stdout logs for pass/fail
+metrics.</li>
+<li><strong>Continuous Integration (CI) Runners:</strong> Automated
+pipelines—such as GitHub Actions, GitLab CI, or Jenkins—are routinely
+configured to run smoke tests and full CTS passes upon driver code
+commits, capturing regression data before final conformance
+packaging.</li>
+</ul>
+<p>Once tests pass completely, the bundled reporting utilities inside
+the CTS repository format the final hardware specifications, OS
+configurations, and test logs into a submission package for Khronos
+Adopter certification.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

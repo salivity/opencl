@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Endianness in Raw Binary Buffer Transfers - opencl</title>
+    <meta name="description" content="Endianness defines the sequential order in which bytes representing multi-byte data are stored in computer memory. When transferring raw binary buffers to an OpenCL device, mismatched endianness between the host CPU and the target compute device can caus">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-endianness-in-raw-binary-buffer-transfers">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Endianness in Raw Binary Buffer Transfers - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-endianness-in-raw-binary-buffer-transfers" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Endianness defines the sequential order in which bytes representing multi-byte data are stored in computer memory. When transferring raw binary buffers to an OpenCL device, mismatched endianness between the host CPU and the target compute device can caus" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-endianness-in-raw-binary-buffer-transfers">OpenCL
+Endianness in Raw Binary Buffer Transfers</h1>
+<p>Endianness defines the sequential order in which bytes representing
+multi-byte data are stored in computer memory. When transferring raw
+binary buffers to an OpenCL device, mismatched endianness between the
+host CPU and the target compute device can cause silent, catastrophic
+data corruption. This article explains how endianness impacts OpenCL
+memory operations, how to query device byte order using the OpenCL API,
+and the essential strategies developers must use to maintain data
+integrity across heterogeneous hardware.</p>
+<h3 id="the-role-of-endianness-in-heterogeneous-computing">The Role of
+Endianness in Heterogeneous Computing</h3>
+<p>Modern computing environments often pair a host processor with one or
+more discrete accelerators, such as GPUs, DSPs, or FPGAs. While standard
+x86 and modern ARM host platforms are predominantly
+little-endian—storing the least significant byte at the lowest memory
+address—compute devices can theoretically follow either little-endian or
+big-endian architectures.</p>
+<p>When you allocate an OpenCL memory buffer via
+<code>clCreateBuffer</code> and populate it using
+<code>clEnqueueWriteBuffer</code> or <code>clEnqueueMapBuffer</code>,
+the OpenCL runtime treats the payload as an opaque sequence of raw
+bytes. It performs a direct, bit-for-bit memory copy from host memory to
+device memory. Because the runtime does not parse the underlying data
+types, it performs no automatic conversion of multi-byte primitives such
+as 16-bit, 32-bit, or 64-bit integers and floating-point numbers.</p>
+<h3 id="consequences-of-a-byte-order-mismatch">Consequences of a
+Byte-Order Mismatch</h3>
+<p>If a little-endian host transfers a raw binary array of 32-bit
+integers to a big-endian OpenCL device, the device reads the bytes in
+reverse order. For example, a 32-bit integer with the hexadecimal value
+<code>0x12345678</code> is arranged in host memory as
+<code>78 56 34 12</code>. When the big-endian device reads those four
+bytes from its local memory, it interprets the value as
+<code>0x78563412</code>.</p>
+<p>This discrepancy leads to:</p>
+<ul>
+<li><strong>Numerical Invalidation:</strong> Integers take on wildly
+incorrect values, and IEEE 754 floating-point numbers often turn into
+<code>NaN</code> (Not a Number) or denormalized values due to the
+scrambling of sign, exponent, and mantissa bits.</li>
+<li><strong>Pointer/Offset Errors:</strong> If the buffer contains
+indices or offsets consumed by OpenCL kernels, out-of-bounds memory
+accesses will occur, triggering device crashes or driver resets.</li>
+<li><strong>Portability Breakdowns:</strong> Code that works correctly
+during development on an x86 host paired with a typical little-endian
+GPU may fail silently when deployed on specialized embedded platforms,
+DSPs, or network processors.</li>
+</ul>
+<h3 id="detecting-device-endianness-in-opencl">Detecting Device
+Endianness in OpenCL</h3>
+<p>The OpenCL framework provides built-in mechanisms to query the target
+architecture's byte ordering at runtime. Developers can use
+<code>clGetDeviceInfo</code> with the
+<code>CL_DEVICE_ENDIAN_LITTLE</code> flag to verify compatibility before
+dispatching buffers:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_bool is_little_endian<span class="op">;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>clGetDeviceInfo<span class="op">(</span>device_id<span class="op">,</span> CL_DEVICE_ENDIAN_LITTLE<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>cl_bool<span class="op">),</span> <span class="op">&amp;</span>is_little_endian<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>is_little_endian <span class="op">==</span> CL_TRUE<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Device matches standard little-endian host architecture</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Device is big-endian; byte swapping is required</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>OpenCL C kernels also define the preprocessor macro
+<code>__ENDIAN_LITTLE__</code> within the device compilation
+environment, allowing kernels to adapt their memory interpretation
+conditionally if needed.</p>
+<h3 id="handling-endianness-discrepancies">Handling Endianness
+Discrepancies</h3>
+<p>To guarantee that raw binary buffers are parsed correctly regardless
+of hardware architecture, adopt one of the following approaches:</p>
+<ol type="1">
+<li><strong>Host-Side Byte Swapping:</strong> If
+<code>CL_DEVICE_ENDIAN_LITTLE</code> does not match the host's
+endianness, iterate through the buffer on the host and swap the byte
+order of every multi-byte element before calling
+<code>clEnqueueWriteBuffer</code>. Similarly, swap bytes after reading
+data back via <code>clEnqueueReadBuffer</code>.</li>
+<li><strong>Device-Side Swapping:</strong> For compute workloads where
+host-side transformation introduces an unacceptable latency bottleneck,
+transfer the raw data as an array of unsigned 8-bit integers
+(<code>uchar</code>) and perform the byte-reversal directly inside the
+kernel using OpenCL built-in functions.</li>
+<li><strong>Structured Image Objects:</strong> Whenever applicable, use
+OpenCL image objects (<code>cl_image</code>) instead of raw buffers for
+image processing. Image formats explicitly define channel data types,
+enabling the driver to handle format and layout transformations
+automatically.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

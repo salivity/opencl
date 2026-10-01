@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Using __OPENCL_VERSION__ for OpenCL 1.2 vs 2.0 - opencl</title>
+    <meta name="description" content="The OPENCLVERSION predefined preprocessor macro enables developers to write portable kernel code that safely targets multiple OpenCL runtimes from a single source file. By checking this macro at compile time using standard preprocessor directives, develo">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/using-opencl-version-for-open-cl-1-2-vs-2-0">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Using __OPENCL_VERSION__ for OpenCL 1.2 vs 2.0 - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/using-opencl-version-for-open-cl-1-2-vs-2-0" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The OPENCLVERSION predefined preprocessor macro enables developers to write portable kernel code that safely targets multiple OpenCL runtimes from a single source file. By checking this macro at compile time using standard preprocessor directives, develo" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="using-opencl_version-for-opencl-12-vs-20">Using
+<strong>OPENCL_VERSION</strong> for OpenCL 1.2 vs 2.0</h1>
+<p>The <code>__OPENCL_VERSION__</code> predefined preprocessor macro
+enables developers to write portable kernel code that safely targets
+multiple OpenCL runtimes from a single source file. By checking this
+macro at compile time using standard preprocessor directives, developers
+can write optimized code paths that leverage advanced OpenCL 2.0
+capabilities while maintaining compatible fallbacks for OpenCL 1.2
+hardware.</p>
+<h3 id="how-__opencl_version__-evaluates">How
+<code>__OPENCL_VERSION__</code> Evaluates</h3>
+<p>The OpenCL compiler defines <code>__OPENCL_VERSION__</code> as an
+integer representing the OpenCL C language version supported by the
+device compiler. The value follows the format
+<code>major * 100 + minor</code>:</p>
+<ul>
+<li><strong>OpenCL 1.2:</strong> Evaluates to <code>120</code></li>
+<li><strong>OpenCL 2.0:</strong> Evaluates to <code>200</code></li>
+</ul>
+<p>Because the value is an integer, developers can use standard
+comparison operators (<code>&gt;=</code>, <code>&lt;</code>,
+<code>==</code>) within preprocessor statements such as
+<code>#if</code>, <code>#elif</code>, and <code>#else</code>.</p>
+<h3 id="implementing-conditional-code-paths">Implementing Conditional
+Code Paths</h3>
+<p>To support both OpenCL 1.2 and 2.0, write conditional blocks checking
+if <code>__OPENCL_VERSION__</code> is greater than or equal to
+<code>200</code>.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#if __OPENCL_VERSION__ &gt;= 200</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// OpenCL 2.0+ implementation</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> process_data<span class="op">(</span>global <span class="dt">int</span><span class="op">*</span> output<span class="op">,</span> <span class="dt">int</span><span class="op">*</span> input<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Uses 2.0 generic address space (no explicit address space qualifier on &#39;input&#39;)</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>        atomic_fetch_add_explicit<span class="op">((</span>atomic_int<span class="op">*)</span>output<span class="op">,</span> <span class="op">*</span>input<span class="op">,</span> memory_order_relaxed<span class="op">);</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="pp">#else</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">// OpenCL 1.2 fallback implementation</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> process_data<span class="op">(</span>__global <span class="dt">int</span><span class="op">*</span> output<span class="op">,</span> __global <span class="dt">int</span><span class="op">*</span> input<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Requires explicit address space qualifiers and legacy atomic built-ins</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>        atomic_add<span class="op">(</span>output<span class="op">,</span> <span class="op">*</span>input<span class="op">);</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="pp">#endif</span></span></code></pre></div>
+<h3 id="key-language-differences-handled-by-the-macro">Key Language
+Differences Handled by the Macro</h3>
+<ol type="1">
+<li><p><strong>Generic Address Space:</strong> OpenCL 2.0 introduced the
+generic address space (<code>__generic</code>), allowing functions to
+receive pointers to <code>__global</code>, <code>__local</code>, or
+<code>__private</code> memory without separate function overloads. In
+OpenCL 1.2, address space qualifiers must be explicitly declared for
+every pointer parameter.</p></li>
+<li><p><strong>Atomic Operations:</strong> OpenCL 2.0 aligned with C11
+atomics, introducing types like <code>atomic_int</code> and fine-grained
+memory synchronization functions (such as
+<code>atomic_fetch_add_explicit</code>). OpenCL 1.2 relies on older
+32-bit and 64-bit built-in functions like <code>atomic_add</code> or
+<code>atom_add</code>.</p></li>
+<li><p><strong>Shared Virtual Memory (SVM) and Pipes:</strong> OpenCL
+2.0 features such as built-in pipe types (<code>pipe</code>) and
+device-side kernel enqueue cannot be parsed by an OpenCL 1.2 compiler.
+Encapsulating these features behind
+<code>#if __OPENCL_VERSION__ &gt;= 200</code> prevents compilation
+errors on legacy runtimes.</p></li>
+<li><p><strong>Work-Group Built-in Functions:</strong> OpenCL 2.0 added
+expressive work-group collective operations, such as
+<code>work_group_broadcast</code> and
+<code>work_group_reduce_add</code>. Using the version macro allows you
+to utilize these efficient hardware-accelerated collectives on 2.0
+drivers while substituting manual local-memory reduction loops on 1.2
+drivers.</p></li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Executing Untrusted OpenCL on Shared Hardware - opencl</title>
+    <meta name="description" content="Executing untrusted OpenCL kernels on shared hardware exposes systems to severe security challenges, including memory corruption, side-channel leakage, denial-of-service, and host compromise. Because hardware accelerators like GPUs and FPGAs were histori">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/executing-untrusted-open-cl-on-shared-hardware">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Executing Untrusted OpenCL on Shared Hardware - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/executing-untrusted-open-cl-on-shared-hardware" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Executing untrusted OpenCL kernels on shared hardware exposes systems to severe security challenges, including memory corruption, side-channel leakage, denial-of-service, and host compromise. Because hardware accelerators like GPUs and FPGAs were histori" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="executing-untrusted-opencl-on-shared-hardware">Executing
+Untrusted OpenCL on Shared Hardware</h1>
+<p>Executing untrusted OpenCL kernels on shared hardware exposes systems
+to severe security challenges, including memory corruption, side-channel
+leakage, denial-of-service, and host compromise. Because hardware
+accelerators like GPUs and FPGAs were historically engineered for raw
+throughput rather than multi-tenant isolation, running third-party
+computational workloads requires understanding and mitigating risks
+across the hardware, driver, and application layers.</p>
+<h3 id="inadequate-memory-isolation">Inadequate Memory Isolation</h3>
+<p>Unlike modern CPUs, many graphics processing units (GPUs) and
+specialized accelerators lack fine-grained memory management units
+(MMUs) capable of enforcing strict hardware-level memory protection per
+work-group or kernel. While contemporary architectures are improving,
+shared memory (local memory), registers, and global device memory may
+not be completely isolated between tasks. An untrusted kernel might
+leverage out-of-bounds pointer arithmetic or buffer overflows to read
+from or write to memory regions assigned to other processes or
+host-device communication buffers.</p>
+<h3 id="uninitialized-state-and-data-remanence">Uninitialized State and
+Data Remanence</h3>
+<p>When a compute device allocates memory for a new OpenCL context or
+buffer, the underlying driver may not automatically zero-fill the
+allocated physical pages. If uninitialized global or local memory
+buffers are allocated directly after a sensitive workload (such as
+cryptographic processing or proprietary model inference), an untrusted
+kernel can read residual data from the shared memory spaces, leading to
+cross-context information disclosure.</p>
+<h3 id="timing-and-side-channel-attacks">Timing and Side-Channel
+Attacks</h3>
+<p>Shared accelerators utilize shared physical components, including
+compute units, memory controllers, execution pipelines, and multi-level
+caches. An untrusted OpenCL kernel can monitor hardware resource
+contention to infer sensitive data processed by co-located kernels. By
+observing memory bus latency, branch divergence, or cache occupancy, an
+attacker can reconstruct cryptographic keys, detect memory access
+patterns, or extract model architectures and weights belonging to other
+tenants.</p>
+<h3 id="denial-of-service-and-resource-starvation">Denial of Service and
+Resource Starvation</h3>
+<p>Kernel preemption on compute accelerators is often significantly less
+mature than preemptive multitasking on CPUs. Many drivers rely on
+coarse-grained preemption or cooperative execution models. An untrusted
+kernel can execute non-terminating loops, provoke deadlock conditions,
+or saturate memory bandwidth, completely stalling the device. In many
+operating systems, a hung GPU trigger a driver timeout and reset (such
+as Windows TDR), which forcefully terminates all concurrent and pending
+tasks across all tenants.</p>
+<h3 id="driver-and-jit-compiler-vulnerabilities">Driver and JIT Compiler
+Vulnerabilities</h3>
+<p>OpenCL source code or intermediate representations (such as SPIR-V)
+are compiled at runtime by the vendor’s user-mode driver or just-in-time
+(JIT) compiler. Because these compilers are vast and complex software
+components running with high privileges, they represent a significant
+attack surface. Maliciously crafted OpenCL C syntax or malformed
+intermediate code can exploit memory corruption vulnerabilities within
+the driver compiler itself, resulting in arbitrary code execution on the
+host CPU with the privileges of the calling process.</p>
+<h3 id="mitigation-strategies">Mitigation Strategies</h3>
+<p>Securing shared environments against malicious OpenCL kernels
+requires a defense-in-depth approach:</p>
+<ul>
+<li><strong>Hardware-Level Partitioning:</strong> Utilize devices
+supporting hardware-enforced spatial partitioning (such as NVIDIA MIG or
+equivalent multi-instance technologies) to isolate compute units and
+memory channels physically.</li>
+<li><strong>Kernel Static Analysis and Verification:</strong> Validate
+SPIR-V binaries before execution using strict validators to enforce
+bounds-checking and reject unauthorized memory operations.</li>
+<li><strong>Driver Hardening and Sandboxing:</strong> Run the OpenCL
+host process inside isolated containers or lightweight virtual machines
+with restricted device access, minimizing the host attack surface if a
+driver exploit occurs.</li>
+<li><strong>Memory Clearing Enforcements:</strong> Explicitly
+zero-initialize all allocated device memory buffers and clear caches
+between context switches to prevent residual data exposure.</li>
+<li><strong>Watchdogs and Execution Quotas:</strong> Implement rigorous
+timeout mechanisms to terminate any kernel that exceeds predefined
+execution time or resource usage thresholds.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

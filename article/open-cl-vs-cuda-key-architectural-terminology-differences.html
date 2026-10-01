@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL vs CUDA: Key Architectural Terminology Differences - opencl</title>
+    <meta name="description" content="Both OpenCL and CUDA are frameworks designed for high-performance parallel computing on modern hardware, yet they express very similar architectural models through distinct vocabularies. While CUDA is a proprietary platform tailored specifically for NVID">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-vs-cuda-key-architectural-terminology-differences">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL vs CUDA: Key Architectural Terminology Differences - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-vs-cuda-key-architectural-terminology-differences" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Both OpenCL and CUDA are frameworks designed for high-performance parallel computing on modern hardware, yet they express very similar architectural models through distinct vocabularies. While CUDA is a proprietary platform tailored specifically for NVID" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-vs-cuda-key-architectural-terminology-differences">OpenCL
+vs CUDA: Key Architectural Terminology Differences</h1>
+<p>Both OpenCL and CUDA are frameworks designed for high-performance
+parallel computing on modern hardware, yet they express very similar
+architectural models through distinct vocabularies. While CUDA is a
+proprietary platform tailored specifically for NVIDIA hardware, OpenCL
+is an open, vendor-neutral standard managed by the Khronos Group that
+targets heterogeneous platforms including CPUs, GPUs, and FPGAs.
+Understanding the mapping of hardware, memory, and execution concepts
+between these two frameworks is essential for developers transitioning
+between them or designing cross-platform applications.</p>
+<h3 id="hardware-hierarchy">Hardware Hierarchy</h3>
+<p>At the physical hardware level, both platforms abstract the processor
+into grouped execution cores, but use different labels to describe these
+components:</p>
+<ul>
+<li><strong>Streaming Multiprocessor (SM) vs. Compute Unit
+(CU):</strong> In CUDA, the primary hardware block containing multiple
+execution units, caches, and scheduling logic is the Streaming
+Multiprocessor. In OpenCL, this exact functional unit is called a
+Compute Unit.</li>
+<li><strong>CUDA Core / Streaming Processor (SP) vs. Processing Element
+(PE):</strong> Inside each multiprocessor, individual arithmetic logic
+units execute single-thread instructions. CUDA designates these as CUDA
+Cores (or Streaming Processors), whereas OpenCL identifies them as
+Processing Elements.</li>
+<li><strong>Host and Device:</strong> Both architectures use identical
+terminology for top-level division. The "Host" refers to the system CPU
+and its main RAM, while the "Device" represents the parallel compute
+accelerator (such as the GPU) containing the dedicated compute
+units.</li>
+</ul>
+<h3 id="execution-model">Execution Model</h3>
+<p>To map parallel algorithms to hardware, both frameworks structure the
+workload into a multi-tiered hierarchy:</p>
+<ul>
+<li><strong>Thread vs. Work-item:</strong> The smallest individual unit
+of execution. In CUDA, this is called a Thread. In OpenCL, it is
+referred to as a Work-item.</li>
+<li><strong>Thread Block vs. Work-group:</strong> Threads/work-items are
+organized into clusters that execute together, synchronize, and share
+local storage. CUDA calls this a Thread Block (or simply Block), whereas
+OpenCL terms it a Work-group.</li>
+<li><strong>Grid vs. ND-Range:</strong> The entire execution problem
+space. CUDA defines the full collection of blocks executing a specific
+kernel as a Grid. OpenCL defines this as an ND-Range (N-Dimensional
+Range), representing the global index space.</li>
+<li><strong>Warp vs. Sub-group:</strong> Hardware schedules and executes
+threads in fixed-size lockstep units. In CUDA, this hardware grouping is
+strictly 32 threads and is named a Warp. OpenCL abstracts this as a
+Sub-group (historically termed a Wavefront on AMD hardware), whose size
+varies depending on the underlying vendor architecture.</li>
+</ul>
+<h3 id="memory-hierarchy">Memory Hierarchy</h3>
+<p>The memory model differences represent the most frequent source of
+confusion because the term "local" carries opposing meanings in each
+framework:</p>
+<ul>
+<li><strong>Private Memory vs. Registers and CUDA Local Memory:</strong>
+OpenCL uses the term <em>Private Memory</em> for variables exclusive to
+a single work-item, typically mapped to on-chip registers. In CUDA,
+thread-private variables reside in <em>Registers</em>; however, if
+register capacity spills over, CUDA stores data in <em>Local
+Memory</em>, which is actually off-chip DRAM private to that
+thread.</li>
+<li><strong>Local Memory vs. Shared Memory:</strong> The high-speed,
+on-chip scratchpad memory shared by all execution units within a single
+block/group is called <em>Local Memory</em> in OpenCL. In contrast, CUDA
+explicitly calls this <em>Shared Memory</em>.</li>
+<li><strong>Global Memory:</strong> Both frameworks use the term
+<em>Global Memory</em> to describe the large, high-latency device memory
+accessible by all threads/work-items across the entire grid or ND-Range,
+as well as the host.</li>
+<li><strong>Constant Memory:</strong> Both frameworks designate
+read-only, host-allocated, cache-backed device storage as <em>Constant
+Memory</em>.</li>
+</ul>
+<h3 id="work-management-and-compilation">Work Management and
+Compilation</h3>
+<p>The execution control pipelines utilize different concepts to queue
+and run compute tasks:</p>
+<ul>
+<li><strong>Streams vs. Command Queues:</strong> CUDA handles
+asynchronous queues of operations using <em>Streams</em>. OpenCL manages
+these sequences through <em>Command-queues</em> attached to a specific
+context and device.</li>
+<li><strong>Kernel Declarations:</strong> Compute functions executed on
+the device are called kernels in both environments. CUDA marks them with
+the <code>__global__</code> execution space qualifier, while OpenCL
+marks them using the <code>__kernel</code> qualifier.</li>
+<li><strong>Compilation:</strong> CUDA programs are precompiled into PTX
+(Parallel Thread Execution) intermediate assembly or native binary code
+via the proprietary <code>nvcc</code> compiler. OpenCL typically
+distributes kernel source code as text strings compiled just-in-time
+(JIT) by the OpenCL runtime driver, though modern versions also support
+intermediate representation via SPIR-V.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

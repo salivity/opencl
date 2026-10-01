@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Eliminate False Sharing in CPU OpenCL - opencl</title>
+    <meta name="description" content="False sharing occurs in CPU-targeted OpenCL kernels when concurrent work-items executing on separate CPU cores update independent variables that reside within the same physical cache line, triggering severe cache-coherency bottlenecks. Because modern CPU">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-to-eliminate-false-sharing-in-cpu-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How to Eliminate False Sharing in CPU OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-to-eliminate-false-sharing-in-cpu-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="False sharing occurs in CPU-targeted OpenCL kernels when concurrent work-items executing on separate CPU cores update independent variables that reside within the same physical cache line, triggering severe cache-coherency bottlenecks. Because modern CPU" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-to-eliminate-false-sharing-in-cpu-opencl">How to Eliminate
+False Sharing in CPU OpenCL</h1>
+<p>False sharing occurs in CPU-targeted OpenCL kernels when concurrent
+work-items executing on separate CPU cores update independent variables
+that reside within the same physical cache line, triggering severe
+cache-coherency bottlenecks. Because modern CPUs manage memory coherency
+at the granularity of a cache line—typically 64 bytes—independent writes
+to adjacent memory locations cause the underlying hardware to repeatedly
+invalidate and reload shared cache blocks across cores. This article
+outlines the architectural causes of false sharing on CPUs within OpenCL
+runtimes and details concrete engineering strategies to eliminate it,
+including thread coarsening, cache-aligned data padding, memory layout
+restructuring, and localized reduction patterns.</p>
+<h3 id="the-mechanics-of-false-sharing-on-multi-core-cpus">The Mechanics
+of False Sharing on Multi-Core CPUs</h3>
+<p>When OpenCL executes on a multi-core processor, the driver typically
+maps work-items and work-groups to operating system threads running on
+individual hardware execution cores. Each core maintains private L1 and
+L2 caches, backed by a shared L3 cache and main memory. Cache coherency
+protocols (such as MESI or MOESI) ensure a consistent state across all
+processor caches.</p>
+<p>If Work-Item A on Core 1 writes to a 4-byte float, and Work-Item B on
+Core 2 writes to an adjacent 4-byte float inside the same 64-byte cache
+line, the hardware must serialize these writes. Core 1 acquires
+exclusive ownership of the entire 64-byte line, invalidating Core 2's
+copy. When Core 2 writes, it forces Core 1 to flush its changes and
+relinquishes ownership, causing the line to "bounce" back and forth
+between core caches. This serialization eliminates parallel scaling even
+though the work-items never access the same logical address.</p>
+<h3 id="thread-and-work-item-coarsening">Thread and Work-Item
+Coarsening</h3>
+<p>The standard GPU programming paradigm encourages launching massive
+numbers of lightweight work-items where each item processes a single
+data element. On a CPU, this frequently introduces false sharing if
+adjacent work-items run on different CPU cores and write to contiguous
+elements.</p>
+<p>Thread coarsening reorganizes the kernel so that each work-item
+processes a chunk of adjacent elements that matches or exceeds the cache
+line size:</p>
+<ul>
+<li><strong>Contiguous Chunking:</strong> Have a single work-item
+process an entire 64-byte block (e.g., 16 32-bit floats) consecutively
+using a loop.</li>
+<li><strong>Reduced Total Work-Items:</strong> Launch fewer work-items
+to match the physical thread count of the CPU rather than millions of
+fine-grained items. This ensures that only one CPU core accesses a
+specific cache block at any given time during write operations.</li>
+</ul>
+<h3 id="data-layout-optimization-soa-vs-aos">Data Layout Optimization:
+SoA vs. AoS</h3>
+<p>Interleaved data structures often group read-mostly and write-heavy
+variables together, or interleave the properties of different
+entities:</p>
+<ul>
+<li><strong>Structure of Arrays (SoA):</strong> Separate frequently
+written variables into their own contiguous arrays. This isolates
+high-traffic writes into distinct memory ranges, preventing them from
+sharing cache lines with read-only parameters or adjacent data fields
+belonging to other work-items.</li>
+<li><strong>Contiguous Global IDs:</strong> Ensure that if fine-grained
+work-items write sequentially, the global work-item index maps directly
+to contiguous addresses (<code>output[get_global_id(0)]</code>) rather
+than strided access patterns
+(<code>output[get_global_id(0) * stride]</code>). Strided writes
+maximize the probability that multiple cores touch the same cache
+line.</li>
+</ul>
+<h3 id="cache-line-alignment-and-explicit-padding">Cache-Line Alignment
+and Explicit Padding</h3>
+<p>For data structures that are updated per work-group or per thread
+(such as intermediate reduction buffers), explicit padding forces
+independent variables into separate cache lines:</p>
+<ul>
+<li><strong>Structure Padding:</strong> Pad per-thread or per-work-group
+state to 64 bytes (or the CPU's specific cache line size). In OpenCL C,
+use the <code>aligned</code> attribute:
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">typedef</span> <span class="kw">struct</span> __attribute__<span class="op">((</span>aligned<span class="op">(</span><span class="dv">64</span><span class="op">)))</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> partial_sum<span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">char</span> padding<span class="op">[</span><span class="dv">60</span><span class="op">];</span> <span class="co">// Explicitly fill the remainder of the 64-byte line</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> ThreadOutput<span class="op">;</span></span></code></pre></div></li>
+<li><strong>Buffer Alignment:</strong> Ensure that host-allocated
+buffers passed to the OpenCL runtime begin at a memory address that is a
+multiple of 64 bytes using aligned memory allocation APIs (such as
+<code>posix_memalign</code> or <code>_aligned_malloc</code>) combined
+with <code>CL_MEM_USE_HOST_PTR</code>.</li>
+</ul>
+<h3 id="register-privatization-and-local-reductions">Register
+Privatization and Local Reductions</h3>
+<p>Writing frequently to global memory exacerbates cache line bouncing.
+Isolating updates to local registers or OpenCL <code>__local</code>
+memory before a single consolidated write eliminates intermediate false
+sharing:</p>
+<ol type="1">
+<li><strong>Private Accumulation:</strong> Keep intermediate results
+inside private scalar variables (stored in CPU registers or private
+stack frames).</li>
+<li><strong>Work-Group Aggregation:</strong> Perform local tree-based
+reductions across work-items within the work-group using
+<code>__local</code> memory.</li>
+<li><strong>Single Global Commit:</strong> Have only one designated
+work-item per work-group (<code>get_local_id(0) == 0</code>) write the
+final aggregate value to global memory. This drastically reduces the
+total number of global writes and limits the spatial footprint of
+concurrent cache-line updates.</li>
+</ol>
+<h3 id="native-cpu-vectorization">Native CPU Vectorization</h3>
+<p>Modern CPUs rely on SIMD units (such as AVX-512 or ARM NEON).
+Utilizing OpenCL vector types directly aligns read and write patterns
+with CPU hardware lines:</p>
+<ul>
+<li>Use vector data types (<code>float4</code>, <code>float8</code>, or
+<code>float16</code>) for global memory writes.</li>
+<li>A <code>float16</code> represents 64 bytes of data, matching a
+standard CPU cache line precisely. When an OpenCL work-item writes a
+complete <code>float16</code> vector to a properly aligned address, it
+updates the entire cache line in a single instruction, preventing
+neighboring cores from concurrently claiming parts of that same cache
+line.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

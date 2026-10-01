@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tools to Convert OpenCL C to SPIR-V Binaries - opencl</title>
+    <meta name="description" content="Compiling OpenCL C kernels into Standard Portable Intermediate Representation (SPIR-V) offline allows developers to distribute pre-compiled kernels, protect intellectual property, and drastically reduce application startup and driver compilation times. T">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/tools-to-convert-open-cl-c-to-spir-v-binaries">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Tools to Convert OpenCL C to SPIR-V Binaries - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/tools-to-convert-open-cl-c-to-spir-v-binaries" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Compiling OpenCL C kernels into Standard Portable Intermediate Representation (SPIR-V) offline allows developers to distribute pre-compiled kernels, protect intellectual property, and drastically reduce application startup and driver compilation times. T" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="tools-to-convert-opencl-c-to-spir-v-binaries">Tools to Convert
+OpenCL C to SPIR-V Binaries</h1>
+<p>Compiling OpenCL C kernels into Standard Portable Intermediate
+Representation (SPIR-V) offline allows developers to distribute
+pre-compiled kernels, protect intellectual property, and drastically
+reduce application startup and driver compilation times. This guide
+outlines the primary tools and workflows available for converting
+high-level OpenCL C source code into portable, offline SPIR-V
+binaries.</p>
+<h3 id="1-clang-with-the-llvm-spirv-translator">1. Clang with the
+LLVM-SPIRV Translator</h3>
+<p>The most common, standardized pipeline for OpenCL C to SPIR-V
+conversion uses Clang alongside the Khronos <code>llvm-spirv</code>
+translator.</p>
+<ul>
+<li><strong>How it works:</strong> Clang parses the OpenCL C source
+code, handles OpenCL-specific built-in types and headers, and compiles
+the code down to LLVM Intermediate Representation (LLVM IR). The
+<code>llvm-spirv</code> tool then translates this LLVM IR into a valid
+SPIR-V binary module.</li>
+<li><strong>Workflow:</strong>
+<ol type="1">
+<li>Compile OpenCL C to LLVM bitcode:
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">clang</span> <span class="at">-cc1</span> <span class="at">-triple</span> spir64-unknown-unknown <span class="at">-O3</span> <span class="at">-cl-std</span><span class="op">=</span>CL2.0 <span class="at">-include</span> opencl-c.h <span class="at">-emit-llvm-bc</span> kernel.cl <span class="at">-o</span> kernel.bc</span></code></pre></div></li>
+<li>Translate LLVM bitcode to SPIR-V:
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">llvm-spirv</span> kernel.bc <span class="at">-o</span> kernel.spv</span></code></pre></div></li>
+</ol></li>
+<li><strong>Best for:</strong> Standard OpenCL runtimes supporting
+<code>clCreateProgramWithIL</code> and modern compute pipelines
+requiring compliant OpenCL environment execution.</li>
+</ul>
+<h3 id="2-clspv">2. Clspv</h3>
+<p>Developed primarily by Google, <strong>clspv</strong> is an
+open-source compiler specifically designed to compile a subset of OpenCL
+C into SPIR-V shaders targeted at Vulkan compute environments.</p>
+<ul>
+<li><strong>How it works:</strong> Unlike standard OpenCL
+implementations that target an OpenCL-flavored SPIR-V environment,
+<code>clspv</code> reorganizes OpenCL C constructs (such as memory
+pointers, work-group builtins, and kernel arguments) to map directly
+onto Vulkan storage buffers and compute pipeline semantics.</li>
+<li><strong>Workflow:</strong>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">clspv</span> <span class="at">-cl-std</span><span class="op">=</span>CL2.0 kernel.cl <span class="at">-o</span> kernel.spv</span></code></pre></div></li>
+<li><strong>Best for:</strong> Running OpenCL C compute algorithms
+within Vulkan-based graphics and compute engines without needing a full
+OpenCL runtime stack.</li>
+</ul>
+<h3 id="3-opencl-clang-khronos--intel">3. OpenCL-Clang (Khronos /
+Intel)</h3>
+<p>The <code>opencl-clang</code> project provides a library wrapper
+around the Clang front-end tailored directly for OpenCL workloads.</p>
+<ul>
+<li><strong>How it works:</strong> It automates the generation of SPIR-V
+directly by embedding the OpenCL C headers and linking against the
+<code>llvm-spirv</code> translator internally. Instead of relying on a
+multi-stage command-line workflow, it exposes an interface to produce
+SPIR-V directly from OpenCL source.</li>
+<li><strong>Best for:</strong> Integration into custom build systems or
+toolchains that require a unified programmatic API rather than chaining
+multiple independent CLI binaries.</li>
+</ul>
+<h3 id="4-intel-opencl-offline-compiler-ocloc">4. Intel OpenCL Offline
+Compiler (OCLOC)</h3>
+<p>Intel provides the Offline Compiler tool (<code>ocloc</code>),
+distributed with the Intel oneAPI Base Toolkit and Compute Runtime.</p>
+<ul>
+<li><strong>How it works:</strong> While <code>ocloc</code> is primarily
+used to target specific Intel GPU hardware architectures (producing
+native Gen binary files), it can also be instructed to emit intermediate
+SPIR-V representations directly from OpenCL C sources.</li>
+<li><strong>Workflow:</strong>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ocloc</span> compile <span class="at">-file</span> kernel.cl <span class="at">-device</span> generic <span class="at">-output</span> kernel.spv <span class="at">-spv_only</span></span></code></pre></div></li>
+<li><strong>Best for:</strong> Development pipelines targeting Intel
+graphics platforms or developers looking for a fully-packaged,
+standalone binary distribution without building LLVM tools from
+source.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

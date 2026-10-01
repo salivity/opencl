@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resolving Race Conditions in OpenCL with Atomics - opencl</title>
+    <meta name="description" content="In parallel computing environments like OpenCL, thousands of concurrently executing work-items frequently need to read and update shared memory locations. Without synchronization, concurrent writes cause race conditions that result in inconsistent or cor">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/resolving-race-conditions-in-open-cl-with-atomics">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Resolving Race Conditions in OpenCL with Atomics - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/resolving-race-conditions-in-open-cl-with-atomics" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In parallel computing environments like OpenCL, thousands of concurrently executing work-items frequently need to read and update shared memory locations. Without synchronization, concurrent writes cause race conditions that result in inconsistent or cor" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="resolving-race-conditions-in-opencl-with-atomics">Resolving Race
+Conditions in OpenCL with Atomics</h1>
+<p>In parallel computing environments like OpenCL, thousands of
+concurrently executing work-items frequently need to read and update
+shared memory locations. Without synchronization, concurrent writes
+cause race conditions that result in inconsistent or corrupt state.
+Atomic operations solve this problem by ensuring that read-modify-write
+sequences execute as single, indivisible instructions. This article
+explains how atomic operations function in OpenCL, how they eliminate
+data hazards across work-items, and how to apply them effectively
+without severely degrading GPU throughput.</p>
+<h2 id="the-cause-of-race-conditions-in-opencl">The Cause of Race
+Conditions in OpenCL</h2>
+<p>A race condition occurs when two or more work-items access the same
+memory location concurrently, and at least one access is a write.
+Consider a simple histogram or counter implementation where multiple
+work-items execute the following expression:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>counter<span class="op">++;</span></span></code></pre></div>
+<p>At the hardware level, this statement requires three distinct
+steps:</p>
+<ol type="1">
+<li>Reading the current value from global or local memory into a
+register.</li>
+<li>Incrementing the register value.</li>
+<li>Writing the updated value back to memory.</li>
+</ol>
+<p>If Work-Item A and Work-Item B read the value simultaneously (e.g.,
+<code>5</code>), both will increment it to <code>6</code> and write back
+<code>6</code>. Instead of the counter advancing by two, one update is
+silently lost. Because the hardware scheduler executes work-items in
+warps or wavefronts with unpredictable interleaving, the result is
+non-deterministic.</p>
+<h2 id="how-atomic-operations-eliminate-the-hazard">How Atomic
+Operations Eliminate the Hazard</h2>
+<p>Atomic operations resolve this conflict by making the entire
+read-modify-write transaction indivisible at the hardware level. When a
+work-item invokes an atomic function on a specific memory address:</p>
+<ol type="1">
+<li>The memory controller locks the targeted memory line or serializes
+access to that address.</li>
+<li>The read, modification, and write-back occur without
+interruption.</li>
+<li>Subsequent work-items attempting to access the same address are
+queued until the active atomic operation finishes.</li>
+</ol>
+<p>By guaranteeing mutual exclusion at the memory hardware level,
+atomics ensure that no other thread can read or overwrite the target
+address midway through the transaction.</p>
+<h2 id="core-atomic-functions-in-opencl">Core Atomic Functions in
+OpenCL</h2>
+<p>OpenCL provides built-in atomic functions designed for both global
+(<code>__global</code>) and local (<code>__local</code>) memory
+spaces.</p>
+<h3 id="arithmetic-and-bitwise-atomics">Arithmetic and Bitwise
+Atomics</h3>
+<p>Basic arithmetic operations prevent data loss during continuous
+accumulations:</p>
+<ul>
+<li><code>atomic_add</code>: Adds a value to the target variable and
+returns the original value.</li>
+<li><code>atomic_sub</code>: Subtracts a value from the target
+variable.</li>
+<li><code>atomic_inc</code> / <code>atomic_dec</code>: Increments or
+decrements a variable by one.</li>
+<li><code>atomic_and</code>, <code>atomic_or</code>,
+<code>atomic_xor</code>: Perform bitwise operations atomically.</li>
+<li><code>atomic_min</code>, <code>atomic_max</code>: Compare and store
+the minimum or maximum value atomically.</li>
+</ul>
+<h3 id="conditional-updates-compare-and-swap">Conditional Updates
+(Compare-and-Swap)</h3>
+<p>For more complex data structures, OpenCL provides compare-and-swap
+primitives:</p>
+<ul>
+<li><code>atomic_cmpxchg(volatile __global int *p, int cmp, int val)</code></li>
+</ul>
+<p>This function checks if the value at address <code>p</code> equals
+<code>cmp</code>. If true, it writes <code>val</code> to <code>p</code>;
+if false, the memory remains untouched. In both cases, it returns the
+original value at <code>p</code>. This primitive forms the backbone of
+lock-free algorithms, such as linked lists or dynamic queues executed on
+the GPU.</p>
+<h2 id="opencl-20-memory-orders-and-scopes">OpenCL 2.0+ Memory Orders
+and Scopes</h2>
+<p>Legacy OpenCL (1.x) uses sequentially consistent atomics by default,
+which can introduce significant memory latency. OpenCL 2.0 and later
+versions align with the C11/C++11 memory model, introducing fine-grained
+memory synchronization controls:</p>
+<ul>
+<li><strong>Memory Scopes:</strong> Developers can restrict
+synchronization to a specific scope
+(<code>memory_scope_work_item</code>,
+<code>memory_scope_work_group</code>, <code>memory_scope_device</code>,
+or <code>memory_scope_all_svm_devices</code>). Restricting an atomic
+operation to the work-group level avoids synchronizing the entire GPU,
+which improves performance.</li>
+<li><strong>Memory Orders:</strong> Functions such as
+<code>atomic_fetch_add_explicit</code> accept parameters like
+<code>memory_order_relaxed</code>, <code>memory_order_acquire</code>, or
+<code>memory_order_release</code>. Using relaxed ordering allows the
+compiler and hardware to reorder non-dependent operations, preventing
+costly pipeline stalls while still ensuring atomic updates.</li>
+</ul>
+<h2 id="performance-considerations-and-best-practices">Performance
+Considerations and Best Practices</h2>
+<p>While atomic operations prevent race conditions, overuse can
+drastically reduce kernel performance due to memory contention. When
+hundreds of threads target the same memory address, the hardware
+serializes their execution, converting massive parallel performance into
+serial execution.</p>
+<p>To maintain high throughput:</p>
+<ul>
+<li><strong>Privatize Updates:</strong> Accumulate values within private
+registers or fast <code>__local</code> (shared) memory first. Use a
+parallel reduction tree inside the work-group, and issue only a single
+atomic update per work-group to global memory.</li>
+<li><strong>Avoid Uniform Contention:</strong> If multiple work-items
+write to random bins (such as a large sparse array), atomics perform
+well because collisions are rare. If all threads hit the same index,
+redesign the algorithm to use hierarchical reductions.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

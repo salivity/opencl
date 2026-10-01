@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Why OpenCL Work-Items Must Execute the Same Barrier - opencl</title>
+    <meta name="description" content="In OpenCL, the barrier function synchronizes execution and memory operations across all work-items in a single work-group. The OpenCL specification strictly mandates that every work-item within a work-group must encounter the exact same barrier instructi">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/why-open-cl-work-items-must-execute-the-same-barrier">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Why OpenCL Work-Items Must Execute the Same Barrier - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/why-open-cl-work-items-must-execute-the-same-barrier" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, the barrier function synchronizes execution and memory operations across all work-items in a single work-group. The OpenCL specification strictly mandates that every work-item within a work-group must encounter the exact same barrier instructi" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="why-opencl-work-items-must-execute-the-same-barrier">Why OpenCL
+Work-Items Must Execute the Same Barrier</h1>
+<p>In OpenCL, the barrier function synchronizes execution and memory
+operations across all work-items in a single work-group. The OpenCL
+specification strictly mandates that every work-item within a work-group
+must encounter the exact same barrier instruction to avoid program
+deadlocks, undefined behavior, and hardware hangs. This article explains
+the underlying architectural and logical reasons why divergent barrier
+execution is prohibited in parallel computing kernels.</p>
+<h3 id="the-mechanism-of-work-group-synchronization">The Mechanism of
+Work-Group Synchronization</h3>
+<p>A barrier acts as a coordination checkpoint. When a work-item hits a
+barrier—such as <code>barrier(CLK_LOCAL_MEM_FENCE)</code> or
+<code>work_group_barrier(...)</code>—it halts execution until every
+other work-item in that specific work-group reaches that identical
+point. Only when all work-items have arrived does the hardware allow any
+of them to advance past the barrier.</p>
+<p>This synchronization ensures data integrity. In typical OpenCL
+programs, work-items collaborate by reading and writing to shared local
+memory (<code>__local</code>). Without a synchronized pause,
+fast-executing work-items might read uninitialized data or overwrite
+values that slower work-items have not yet consumed, leading to race
+conditions.</p>
+<h3 id="prevention-of-deadlocks">Prevention of Deadlocks</h3>
+<p>The primary reason all work-items must encounter the same barrier is
+the prevention of infinite deadlocks.</p>
+<p>Consider an algorithm where a barrier is placed inside a conditional
+branch:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">)</span> <span class="op">%</span> <span class="dv">2</span> <span class="op">==</span> <span class="dv">0</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Barrier A</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Barrier B</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>In this scenario, even-indexed work-items halt at Barrier A waiting
+for odd-indexed work-items. However, the odd-indexed work-items diverge
+into the <code>else</code> block and stop at Barrier B, waiting for the
+even-indexed work-items. Because neither set can proceed until the other
+joins them at their respective barrier, the work-group enters a
+permanent deadlock.</p>
+<p>To eliminate this class of deadlock, the OpenCL specification
+dictates that barriers must be encountered convergently. If a barrier
+resides within conditional code, the condition must evaluate identically
+for all work-items in the work-group.</p>
+<h3 id="hardware-execution-models-and-divergence">Hardware Execution
+Models and Divergence</h3>
+<p>Underlying GPU architectures execute work-items in lockstep groups,
+often referred to as warps (NVIDIA) or wavefronts (AMD). These
+sub-groups share a single instruction pointer:</p>
+<ol type="1">
+<li><strong>Lockstep Execution:</strong> When code diverges (e.g., via
+an <code>if-else</code> statement), the hardware masks off the inactive
+threads while executing one branch, then flips the mask to execute the
+other branch.</li>
+<li><strong>Barrier Hardware:</strong> The hardware barrier
+synchronization logic monitors arrival counts. If instructions diverge
+such that some lanes wait on a synchronization signal that inactive
+lanes cannot generate, the execution pipeline stalls indefinitely.</li>
+</ol>
+<p>Because modern hardware primitives are designed around unified
+control flow for synchronization, divergent barriers cannot be scheduled
+efficiently or reliably.</p>
+<h3 id="dynamic-control-flow-rules">Dynamic Control Flow Rules</h3>
+<p>The requirement applies dynamically rather than purely statically.
+Work-items must encounter the exact same dynamic execution instance of
+the barrier.</p>
+<p>If a barrier is placed inside a loop:</p>
+<ul>
+<li>Every work-item in the work-group must execute the loop the exact
+same number of times.</li>
+<li>If one work-item exits a loop early while others remain, the
+work-items inside the loop will wait indefinitely for the departed item
+to hit the subsequent barrier iterations, triggering undefined
+behavior.</li>
+</ul>
+<p>Enforcing that all work-items encounter the identical barrier ensures
+deterministic synchronization, aligns with the physical execution
+constraints of SIMD/SIMT hardware, and guarantees program correctness
+across diverse computing devices.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

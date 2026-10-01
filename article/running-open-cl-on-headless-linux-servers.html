@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Running OpenCL on Headless Linux Servers - opencl</title>
+    <meta name="description" content="Running OpenCL workloads on headless compute servers without an active X11 or Wayland display server is standard practice for modern high-performance computing, machine learning, and data processing pipelines. While legacy drivers historically tied GPU i">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/running-open-cl-on-headless-linux-servers">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Running OpenCL on Headless Linux Servers - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/running-open-cl-on-headless-linux-servers" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Running OpenCL workloads on headless compute servers without an active X11 or Wayland display server is standard practice for modern high-performance computing, machine learning, and data processing pipelines. While legacy drivers historically tied GPU i" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="running-opencl-on-headless-linux-servers">Running OpenCL on
+Headless Linux Servers</h1>
+<p>Running OpenCL workloads on headless compute servers without an
+active X11 or Wayland display server is standard practice for modern
+high-performance computing, machine learning, and data processing
+pipelines. While legacy drivers historically tied GPU initialization to
+display servers, modern OpenCL architectures utilize the Installable
+Client Driver (ICD) model, vendor-provided compute runtimes, and direct
+kernel-level interfaces to execute tasks independently of any graphical
+environment. Achieving this requires installing headless GPU drivers,
+configuring the OpenCL ICD loader, granting proper user permissions to
+GPU device nodes, and validating the setup via command-line
+utilities.</p>
+<h3 id="1-install-the-opencl-icd-loader-and-verification-tools">1.
+Install the OpenCL ICD Loader and Verification Tools</h3>
+<p>OpenCL uses an Installable Client Driver (ICD) architecture that
+allows multiple OpenCL implementations to coexist on the same system.
+The system needs an ICD loader to discover and dispatch calls to
+vendor-specific runtimes, along with diagnostic tools to verify platform
+availability.</p>
+<p>On Debian or Ubuntu-based distributions, install the required
+packages:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt-get update</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt-get install <span class="at">-y</span> ocl-icd-libopencl1 opencl-headers clinfo</span></code></pre></div>
+<p>On RHEL or Rocky Linux:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> dnf install <span class="at">-y</span> ocl-icd clinfo</span></code></pre></div>
+<h3 id="2-install-vendor-specific-headless-runtimes">2. Install
+Vendor-Specific Headless Runtimes</h3>
+<p>Each hardware vendor provides compute runtimes that operate without
+desktop display components.</p>
+<h4 id="nvidia">NVIDIA</h4>
+<p>NVIDIA separates display server requirements from its core compute
+stack. Install the headless server driver and OpenCL support without GUI
+dependencies:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ubuntu server example</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt-get install <span class="at">-y</span> nvidia-headless-535 nvidia-utils-535</span></code></pre></div>
+<p>Enable GPU persistence mode to keep the driver initialized even when
+no compute applications or display servers are running:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> nvidia-smi <span class="at">-pm</span> 1</span></code></pre></div>
+<h4 id="amd-rocm">AMD (ROCm)</h4>
+<p>AMD's ROCm (Radeon Open Compute) stack is designed natively for
+headless compute clusters. Install the ROCm OpenCL runtime:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt-get install <span class="at">-y</span> rocm-opencl-runtime</span></code></pre></div>
+<p>ROCm communicates directly with the Linux kernel via the
+<code>/dev/kfd</code> interface, bypassing all graphical subsystems.</p>
+<h4 id="intel">Intel</h4>
+<p>For Intel integrated GPUs or discrete Intel Data Center GPUs, install
+the Intel Compute Runtime:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt-get install <span class="at">-y</span> intel-opencl-icd</span></code></pre></div>
+<h3 id="3-configure-device-node-permissions">3. Configure Device Node
+Permissions</h3>
+<p>Headless compute tasks fail if the executing user or service does not
+have read/write access to the GPU character devices.</p>
+<ul>
+<li><strong>NVIDIA:</strong> Requires access to
+<code>/dev/nvidia0</code>, <code>/dev/nvidiactl</code>, and
+<code>/dev/nvidia-uvm</code>.</li>
+<li><strong>AMD / Intel:</strong> Requires access to
+<code>/dev/dri/renderD*</code> and <code>/dev/kfd</code> (AMD).</li>
+</ul>
+<p>Grant standard users access by adding them to the <code>render</code>
+and <code>video</code> groups:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> usermod <span class="at">-aG</span> render,video <span class="va">$USER</span></span></code></pre></div>
+<p>Log out and back in, or run <code>newgrp render</code> to apply the
+permission changes to the current shell.</p>
+<h3 id="4-verify-the-icd-configuration">4. Verify the ICD
+Configuration</h3>
+<p>The OpenCL loader detects platforms by reading text files placed in
+<code>/etc/OpenCL/vendors/</code>. Each <code>.icd</code> file contains
+the path to the vendor's dynamic shared library (<code>.so</code>).</p>
+<p>List the configured runtimes:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> <span class="at">-la</span> /etc/OpenCL/vendors/</span></code></pre></div>
+<p>Expected files include:</p>
+<ul>
+<li><code>nvidia.icd</code> pointing to
+<code>libnvidia-opencl.so.1</code></li>
+<li><code>amdocl64.icd</code> pointing to
+<code>libamdocl64.so</code></li>
+<li><code>intel.icd</code> pointing to <code>libigdrcl.so</code></li>
+</ul>
+<p>If a driver installation failed to place its <code>.icd</code> file
+automatically, manually create the corresponding vendor file in
+<code>/etc/OpenCL/vendors/</code> containing the absolute path to the
+runtime library.</p>
+<h3 id="5-validate-the-headless-environment">5. Validate the Headless
+Environment</h3>
+<p>Test the environment from an SSH session without X11 forwarding
+enabled (ensure <code>ssh -x</code> is used, or the <code>DISPLAY</code>
+environment variable is unset):</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="bu">unset</span> <span class="va">DISPLAY</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="bu">unset</span> <span class="va">WAYLAND_DISPLAY</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="ex">clinfo</span></span></code></pre></div>
+<p>A properly configured headless environment will return:</p>
+<ul>
+<li><strong>Number of platforms:</strong> 1 or more.</li>
+<li><strong>Platform Name:</strong> The installed vendor runtime (e.g.,
+NVIDIA CUDA, AMD Accelerated Parallel Processing, or Intel OpenCL HD
+Graphics).</li>
+<li><strong>Device Type:</strong> <code>GPU</code> (or
+<code>Accelerator</code>).</li>
+</ul>
+<p>If <code>clinfo</code> lists the target devices without throwing
+driver initialization errors, the server is ready to run automated,
+headless OpenCL batch jobs and background daemon processes.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

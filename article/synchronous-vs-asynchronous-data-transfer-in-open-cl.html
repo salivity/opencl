@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synchronous vs Asynchronous Data Transfer in OpenCL - opencl</title>
+    <meta name="description" content="In OpenCL, transferring data between the host (CPU) and an accelerator device (such as a GPU) is a critical factor in application performance. Data transfers are mediated through explicit commands placed in a command queue, where developers must choose b">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/synchronous-vs-asynchronous-data-transfer-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Synchronous vs Asynchronous Data Transfer in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/synchronous-vs-asynchronous-data-transfer-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, transferring data between the host (CPU) and an accelerator device (such as a GPU) is a critical factor in application performance. Data transfers are mediated through explicit commands placed in a command queue, where developers must choose b" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="synchronous-vs-asynchronous-data-transfer-in-opencl">Synchronous
+vs Asynchronous Data Transfer in OpenCL</h1>
+<p>In OpenCL, transferring data between the host (CPU) and an
+accelerator device (such as a GPU) is a critical factor in application
+performance. Data transfers are mediated through explicit commands
+placed in a command queue, where developers must choose between
+synchronous (blocking) and asynchronous (non-blocking) execution. This
+article explains how OpenCL implements both models through API
+parameters, command queues, and event objects, highlighting when and how
+to leverage each approach for optimal memory bandwidth and compute
+utilization.</p>
+<h3 id="the-mechanics-of-data-movement-in-opencl">The Mechanics of Data
+Movement in OpenCL</h3>
+<p>Host and device architectures typically maintain separate physical
+memory spaces connected via an interconnect bus, such as PCIe. OpenCL
+manages transfers between these distinct memories using dedicated API
+commands, primarily:</p>
+<ul>
+<li><code>clEnqueueReadBuffer</code>: Copies data from device memory to
+host memory.</li>
+<li><code>clEnqueueWriteBuffer</code>: Copies data from host memory to
+device memory.</li>
+<li><code>clEnqueueCopyBuffer</code>: Copies data directly between two
+device memory locations.</li>
+<li><code>clEnqueueMapBuffer</code>: Maps device memory into the host
+address space.</li>
+</ul>
+<p>Each of these enqueue functions takes a parameter that determines
+whether the operation is synchronous or asynchronous.</p>
+<h3 id="synchronous-blocking-transfers">Synchronous (Blocking)
+Transfers</h3>
+<p>A data transfer is made synchronous by passing <code>CL_TRUE</code>
+to the <code>blocking_read</code> or <code>blocking_write</code>
+parameter of the enqueue function.</p>
+<p>When an operation is set to <code>CL_TRUE</code>:</p>
+<ol type="1">
+<li>The host thread issues the command to the target command queue.</li>
+<li>The calling host thread is blocked (halted) until the transfer
+completes entirely.</li>
+<li>Once the function returns, the host buffer is safe to read or
+overwrite because the underlying memory operation has finished.</li>
+</ol>
+<p>Synchronous transfers simplify application control flow by removing
+the need for manual synchronization. However, they introduce significant
+latency. The CPU remains idle while waiting for PCIe transfer operations
+to complete, preventing any parallel work or overlapping between compute
+and I/O.</p>
+<h3 id="asynchronous-non-blocking-transfers">Asynchronous (Non-Blocking)
+Transfers</h3>
+<p>A data transfer is made asynchronous by passing <code>CL_FALSE</code>
+to the <code>blocking_read</code> or <code>blocking_write</code>
+parameter.</p>
+<p>When an operation is set to <code>CL_FALSE</code>:</p>
+<ol type="1">
+<li>The OpenCL runtime enqueues the transfer command and immediately
+returns control to the calling host thread.</li>
+<li>The transfer proceeds in the background on the hardware
+interconnect.</li>
+<li>The host thread must not modify (in the case of a write) or read (in
+the case of a read) the specified host memory pointer until completion
+is confirmed.</li>
+</ol>
+<p>Asynchronous transfers are essential for high-performance
+applications because they permit:</p>
+<ul>
+<li><strong>Host-Device Concurrency:</strong> The CPU can execute other
+computations while the device transfers data.</li>
+<li><strong>Compute-Transfer Overlap:</strong> Modern devices feature
+dedicated DMA engines capable of reading and writing data while compute
+units simultaneously execute kernels.</li>
+</ul>
+<h3 id="managing-asynchronous-execution-with-events">Managing
+Asynchronous Execution with Events</h3>
+<p>Because asynchronous commands return immediately, OpenCL relies on
+event objects (<code>cl_event</code>) and command queue configurations
+to track dependencies and completion:</p>
+<ul>
+<li><strong>In-Order Command Queues:</strong> By default, command queues
+execute commands sequentially. Even if a transfer is non-blocking to the
+host (<code>CL_FALSE</code>), subsequent device operations (like kernel
+executions) in the same queue will wait for that transfer to complete
+before executing.</li>
+<li><strong>Out-of-Order Command Queues:</strong> Created with
+<code>CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE</code>, these queues allow
+operations to execute as soon as their dependencies are met, maximizing
+hardware concurrency.</li>
+<li><strong>Event Synchronization:</strong> Enqueue calls can output an
+event pointer (<code>cl_event *event</code>) that represents the status
+of that operation. Other commands can accept a list of event
+dependencies (<code>event_wait_list</code>), preventing execution until
+prerequisite transfers finish.</li>
+<li><strong>Host Synchronization:</strong> The host can manually
+synchronize with pending asynchronous operations by calling
+<code>clWaitForEvents</code> on specific transfer events, or
+<code>clFinish</code> to wait for all commands in a given queue to
+complete.</li>
+</ul>
+<h3 id="asynchronous-memory-mapping">Asynchronous Memory Mapping</h3>
+<p>Another common method for data transfer is buffer mapping via
+<code>clEnqueueMapBuffer</code>. Passing <code>CL_TRUE</code> to
+<code>blocking_map</code> halts the host until the memory is accessible,
+whereas <code>CL_FALSE</code> maps the pointer asynchronously. After the
+host completes reads or writes to this mapped region, it must call
+<code>clEnqueueUnmapMemObject</code> to yield ownership back to the
+device, a call that can also be executed synchronously or
+asynchronously.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

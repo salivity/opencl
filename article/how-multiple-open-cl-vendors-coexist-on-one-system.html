@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How Multiple OpenCL Vendors Coexist on One System - opencl</title>
+    <meta name="description" content="Modern computer systems frequently feature heterogeneous hardware configurations, such as an Intel CPU alongside an NVIDIA discrete GPU and an AMD accelerator. To allow these disparate devices to function under a unified programming interface, OpenCL rel">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-multiple-open-cl-vendors-coexist-on-one-system">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How Multiple OpenCL Vendors Coexist on One System - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-multiple-open-cl-vendors-coexist-on-one-system" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Modern computer systems frequently feature heterogeneous hardware configurations, such as an Intel CPU alongside an NVIDIA discrete GPU and an AMD accelerator. To allow these disparate devices to function under a unified programming interface, OpenCL rel" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-multiple-opencl-vendors-coexist-on-one-system">How Multiple
+OpenCL Vendors Coexist on One System</h1>
+<p>Modern computer systems frequently feature heterogeneous hardware
+configurations, such as an Intel CPU alongside an NVIDIA discrete GPU
+and an AMD accelerator. To allow these disparate devices to function
+under a unified programming interface, OpenCL relies on an architecture
+known as the Installable Client Driver (ICD) model. Through the
+centralized OpenCL ICD Loader and platform-specific registration files,
+an operating system can identify, expose, and dispatch commands to
+multiple distinct vendor drivers simultaneously without collision.</p>
+<h3 id="the-role-of-the-icd-loader">The Role of the ICD Loader</h3>
+<p>At the center of multi-vendor coexistence is the OpenCL ICD Loader.
+Instead of linking applications directly to a specific vendor's driver
+library (such as <code>nvopencl.dll</code> or
+<code>libamdocl64.so</code>), developers link their applications against
+a generic OpenCL library (<code>OpenCL.dll</code> on Windows or
+<code>libOpenCL.so</code> on Linux).</p>
+<p>The ICD Loader acts as an abstraction layer and dynamic dispatcher.
+When an OpenCL application starts, the ICD Loader scans the operating
+system for installed vendor drivers, loads each driver into memory, and
+constructs a unified list of available platforms.</p>
+<h3 id="vendor-driver-registration">Vendor Driver Registration</h3>
+<p>To notify the ICD Loader of their presence, hardware vendors register
+their dynamic libraries during driver installation using standardized
+operating system locations:</p>
+<ul>
+<li><strong>Linux:</strong> Drivers place a plain text file with a
+<code>.icd</code> extension inside the <code>/etc/OpenCL/vendors/</code>
+directory. Each <code>.icd</code> file contains the absolute path or
+library name of the vendor’s shared object (for example,
+<code>/usr/lib/x86_64-linux-gnu/libnvidia-opencl.so.1</code>).</li>
+<li><strong>Windows:</strong> Drivers register their dynamic-link
+libraries (DLLs) in the Windows Registry under the key:
+<code>HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\OpenCL\Vendors</code> A DWORD
+value of <code>0</code> is assigned to each entry, where the value name
+is the full path to the vendor-specific OpenCL DLL.</li>
+</ul>
+<p>Because each vendor writes to its own isolated file or registry key,
+installations and updates from one vendor do not overwrite or interfere
+with another.</p>
+<h3 id="discovery-and-the-dispatch-table">Discovery and the Dispatch
+Table</h3>
+<p>When an application calls <code>clGetPlatformIDs</code>, the ICD
+Loader performs the following sequence:</p>
+<ol type="1">
+<li><strong>Enumeration:</strong> It reads the registration directory or
+registry key to detect all installed vendor drivers.</li>
+<li><strong>Loading:</strong> It opens each vendor library dynamically
+using standard system routines (<code>dlopen</code> on POSIX systems or
+<code>LoadLibrary</code> on Windows).</li>
+<li><strong>Validation:</strong> It verifies that each library exposes
+the required Khronos ICD extension function,
+<code>clIcdGetPlatformIDsKHR</code>.</li>
+<li><strong>Aggregation:</strong> It queries each vendor driver for its
+available platforms and returns the combined list of platforms to the
+application.</li>
+</ol>
+<p>To route function calls accurately, OpenCL platforms and handles
+(such as contexts, command queues, and memory objects) contain a pointer
+to a dispatch table as their first member. When an application invokes
+an OpenCL API call—such as <code>clEnqueueNDRangeKernel</code>—the ICD
+Loader inspects the target handle, retrieves the vendor-specific
+dispatch table, and forwards the execution directly to that vendor's
+implementation.</p>
+<h3 id="application-control">Application Control</h3>
+<p>Once the ICD Loader exposes the aggregated platforms, the application
+determines how they are utilized. An application can iterate through the
+available platforms, query device capabilities (such as whether a device
+is an integrated GPU, a discrete GPU, or a multicore CPU), and
+selectively create separate OpenCL contexts for each vendor's hardware.
+This architecture ensures complete vendor coexistence, allowing a single
+program to distribute workloads across completely different hardware
+architectures concurrently.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

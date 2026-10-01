@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Limitations of LLVM-Based SPIR Before SPIR-V - opencl</title>
+    <meta name="description" content="Before the introduction of SPIR-V, the Khronos Group utilized the Standard Portable Intermediate Representation (SPIR) to facilitate cross-vendor compilation in OpenCL. While original SPIR versions—primarily SPIR 1.2 and SPIR 2.0—aimed to decouple Op">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/limitations-of-llvm-based-spir-before-spir-v">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Limitations of LLVM-Based SPIR Before SPIR-V - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/limitations-of-llvm-based-spir-before-spir-v" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Before the introduction of SPIR-V, the Khronos Group utilized the Standard Portable Intermediate Representation (SPIR) to facilitate cross-vendor compilation in OpenCL. While original SPIR versions—primarily SPIR 1.2 and SPIR 2.0—aimed to decouple Op" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="limitations-of-llvm-based-spir-before-spir-v">Limitations of
+LLVM-Based SPIR Before SPIR-V</h1>
+<p>Before the introduction of SPIR-V, the Khronos Group utilized the
+Standard Portable Intermediate Representation (SPIR) to facilitate
+cross-vendor compilation in OpenCL. While original SPIR
+versions—primarily SPIR 1.2 and SPIR 2.0—aimed to decouple OpenCL
+compilation into a frontend and a backend, they relied directly on LLVM
+intermediate representation (IR) bitcode. This reliance created severe
+technical and practical bottlenecks, including tight coupling to
+specific LLVM versions, target-specific data leakage, driver bloat, and
+an inability to unify compute with modern graphics pipelines. These
+deficiencies ultimately necessitated the clean-slate redesign that
+resulted in SPIR-V.</p>
+<h3 id="direct-coupling-to-llvm-versions">Direct Coupling to LLVM
+Versions</h3>
+<p>The foremost limitation of original SPIR was its direct dependence on
+specific LLVM releases. SPIR 1.2 was bound to LLVM 3.2, and SPIR 2.0 was
+tied to LLVM 3.4. By design, the LLVM project does not guarantee
+backward or forward compatibility for its binary bitcode across major
+versions. Because the SPIR specification was defined as a subset and
+extension of a particular LLVM version's IR, any update to a hardware
+vendor's internal LLVM compiler chain risked breaking compatibility with
+existing SPIR binaries. Vendors were forced either to maintain legacy,
+outdated LLVM parser infrastructure inside their runtime drivers or to
+implement complex translation layers.</p>
+<h3 id="target-machine-and-layout-leakage">Target Machine and Layout
+Leakage</h3>
+<p>LLVM IR was designed as an internal representation for
+general-purpose CPU compilers, meaning it assumes low-level target
+machine specifics earlier in the pipeline than is ideal for
+heterogeneous computing. When compiling an OpenCL C kernel into LLVM
+bitcode, target-dependent information—such as data layout, endianness,
+pointer sizes, and struct alignment—often became baked directly into the
+IR. This "leaky abstraction" compromised true binary portability across
+diverse GPU architectures, embedded accelerators, and heterogeneous
+hardware that possessed fundamentally different memory hierarchies and
+register structures.</p>
+<h3 id="driver-bloat-and-compilation-overhead">Driver Bloat and
+Compilation Overhead</h3>
+<p>Because original SPIR was essentially serialized LLVM bitcode,
+hardware vendors had to embed large portions of the LLVM infrastructure
+directly into their graphics and compute drivers to parse, validate, and
+optimize incoming SPIR modules. For resource-constrained environments,
+such as mobile and embedded platforms, shipping heavyweight LLVM
+backends inside consumer-facing drivers led to massive binary
+footprints, high memory consumption, and increased kernel compilation
+latency at runtime.</p>
+<h3 id="inability-to-unify-graphics-and-compute">Inability to Unify
+Graphics and Compute</h3>
+<p>Original SPIR was built specifically around OpenCL C semantics and
+compute workloads. As the Khronos Group developed modern low-overhead
+APIs like Vulkan, the industry demanded a single intermediate language
+capable of representing both general compute and the complete graphics
+pipeline (including vertex, tessellation, geometry, and fragment
+shading). Original LLVM-based SPIR lacked standard constructs to handle
+graphics-specific concepts—such as multi-stage pipeline inputs/outputs,
+descriptors, image sampling states, and built-in graphics
+operations—making it unsuitable as a unified cross-API intermediate
+format.</p>
+<h3 id="weak-governance-and-validation-constraints">Weak Governance and
+Validation Constraints</h3>
+<p>Because original SPIR inherited the full expressiveness and
+complexity of LLVM IR, writing standalone specification compliance tests
+and robust validators was extremely difficult. In practice, code
+generation behavior was largely defined by how a specific version of
+Clang and the LLVM libraries behaved rather than by an independent,
+formal specification. SPIR-V solved this by discarding LLVM bitcode
+entirely, establishing an independent, strictly versioned, 32-bit-word
+binary format tailored specifically for heterogeneous compute and
+graphics architectures.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

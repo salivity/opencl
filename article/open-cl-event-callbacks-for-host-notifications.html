@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Event Callbacks for Host Notifications - opencl</title>
+    <meta name="description" content="OpenCL host programs can achieve non-blocking, asynchronous execution by using event callbacks to receive notifications when device operations finish. Instead of stalling the host thread with blocking synchronization calls like clWaitForEvents or clFinis">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-event-callbacks-for-host-notifications">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Event Callbacks for Host Notifications - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-event-callbacks-for-host-notifications" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL host programs can achieve non-blocking, asynchronous execution by using event callbacks to receive notifications when device operations finish. Instead of stalling the host thread with blocking synchronization calls like clWaitForEvents or clFinis" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-event-callbacks-for-host-notifications">OpenCL Event
+Callbacks for Host Notifications</h1>
+<p>OpenCL host programs can achieve non-blocking, asynchronous execution
+by using event callbacks to receive notifications when device operations
+finish. Instead of stalling the host thread with blocking
+synchronization calls like <code>clWaitForEvents</code> or
+<code>clFinish</code>, developers can attach custom callback functions
+to specific OpenCL events using the <code>clSetEventCallback</code> API.
+This article explains how to define callback functions, register them
+with OpenCL events, and manage execution constraints effectively.</p>
+<h3 id="the-callback-registration-api">The Callback Registration
+API</h3>
+<p>OpenCL provides the <code>clSetEventCallback</code> function to
+register a user-defined callback on an event object. The function
+signature is defined as follows:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_int clSetEventCallback<span class="op">(</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    cl_event event<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    cl_int command_exec_callback_type<span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> <span class="op">(</span>CL_CALLBACK <span class="op">*</span>pfn_notify<span class="op">)(</span>cl_event event<span class="op">,</span> cl_int event_command_status<span class="op">,</span> <span class="dt">void</span> <span class="op">*</span>user_data<span class="op">),</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> <span class="op">*</span>user_data</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<ul>
+<li><strong><code>event</code></strong>: A valid OpenCL event object
+returned by an asynchronous operation (e.g.,
+<code>clEnqueueNDRangeKernel</code> or
+<code>clEnqueueReadBuffer</code>).</li>
+<li><strong><code>command_exec_callback_type</code></strong>: The
+execution status that triggers the callback. To receive completion
+notifications, pass <code>CL_COMPLETE</code>.</li>
+<li><strong><code>pfn_notify</code></strong>: A pointer to the callback
+function that the OpenCL runtime will invoke.</li>
+<li><strong><code>user_data</code></strong>: A pointer to user-defined
+data passed directly to the callback function.</li>
+</ul>
+<h3 id="implementing-the-callback-function">Implementing the Callback
+Function</h3>
+<p>The callback function must conform to the <code>CL_CALLBACK</code>
+calling convention. It receives the event handle, the final execution
+status of the command, and the pointer passed via
+<code>user_data</code>.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> CL_CALLBACK completion_callback<span class="op">(</span>cl_event event<span class="op">,</span> cl_int event_command_status<span class="op">,</span> <span class="dt">void</span> <span class="op">*</span>user_data<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>event_command_status <span class="op">==</span> CL_COMPLETE<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Operation completed successfully</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>        <span class="dt">char</span> <span class="op">*</span>message <span class="op">=</span> <span class="op">(</span><span class="dt">char</span> <span class="op">*)</span>user_data<span class="op">;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        printf<span class="op">(</span><span class="st">&quot;Notification received: </span><span class="sc">%s\n</span><span class="st">&quot;</span><span class="op">,</span> message<span class="op">);</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Operation failed or returned an error status</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        printf<span class="op">(</span><span class="st">&quot;Command failed with status: </span><span class="sc">%d\n</span><span class="st">&quot;</span><span class="op">,</span> event_command_status<span class="op">);</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Release event if it was retained for this callback</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    clReleaseEvent<span class="op">(</span>event<span class="op">);</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="complete-implementation-workflow">Complete Implementation
+Workflow</h3>
+<p>To receive completion notifications in a host program, follow these
+steps:</p>
+<ol type="1">
+<li><strong>Enqueue a Command and Capture the Event</strong>: Pass a
+pointer to a <code>cl_event</code> variable as the last argument of an
+enqueue call.</li>
+<li><strong>Retain the Event (Optional but Recommended)</strong>: Call
+<code>clRetainEvent</code> if the lifetime of the event object needs to
+be extended across threads.</li>
+<li><strong>Register the Callback</strong>: Invoke
+<code>clSetEventCallback</code> specifying
+<code>CL_COMPLETE</code>.</li>
+<li><strong>Flush the Queue</strong>: Call <code>clFlush</code> to
+guarantee that the command is submitted to the device without blocking
+the host.</li>
+</ol>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>cl_event kernel_event<span class="op">;</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="dt">char</span> <span class="op">*</span>task_label <span class="op">=</span> <span class="st">&quot;Kernel Execution Finished&quot;</span><span class="op">;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">// Enqueue execution</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>cl_int err <span class="op">=</span> clEnqueueNDRangeKernel<span class="op">(</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    queue<span class="op">,</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    kernel<span class="op">,</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="dv">1</span><span class="op">,</span> NULL<span class="op">,</span> <span class="op">&amp;</span>global_work_size<span class="op">,</span> <span class="op">&amp;</span>local_work_size<span class="op">,</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span><span class="op">,</span> NULL<span class="op">,</span> <span class="op">&amp;</span>kernel_event</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>err <span class="op">==</span> CL_SUCCESS<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Retain the event so it remains valid in the callback</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    clRetainEvent<span class="op">(</span>kernel_event<span class="op">);</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Register callback for completion</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>    clSetEventCallback<span class="op">(</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>        kernel_event<span class="op">,</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>        CL_COMPLETE<span class="op">,</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>        completion_callback<span class="op">,</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>        <span class="op">(</span><span class="dt">void</span> <span class="op">*)</span>task_label</span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>    <span class="op">);</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Flush commands to the compute device</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>    clFlush<span class="op">(</span>queue<span class="op">);</span></span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Host code continues executing without blocking</span></span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="critical-execution-rules-and-constraints">Critical Execution
+Rules and Constraints</h3>
+<ul>
+<li><strong>Thread Safety</strong>: Callbacks are executed
+asynchronously on a thread managed by the OpenCL runtime or
+implementation. Any shared state accessed within the callback must be
+synchronized using standard threading primitives (e.g., mutexes or
+atomic operations).</li>
+<li><strong>OpenCL API Restrictions</strong>: The OpenCL specification
+forbids calling blocking OpenCL APIs (such as <code>clFinish</code>,
+<code>clWaitForEvents</code>, or synchronous read/write calls) inside an
+event callback. Doing so can cause immediate deadlocks.</li>
+<li><strong>Order of Execution</strong>: If multiple callbacks are
+registered on the same event, the runtime does not guarantee the order
+in which they will be invoked.</li>
+<li><strong>Resource Cleanup</strong>: Ensure proper reference counting.
+Every <code>clRetainEvent</code> must have a corresponding
+<code>clReleaseEvent</code>, which can be safely called from inside the
+callback function itself.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

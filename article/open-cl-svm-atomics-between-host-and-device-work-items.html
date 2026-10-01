@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL SVM Atomics Between Host and Device Work-Items - opencl</title>
+    <meta name="description" content="Shared Virtual Memory (SVM) in OpenCL provides a unified virtual address space across host CPU threads and device work-items, removing the need for manual buffer copies. When host threads and device work-items access the exact same memory location concur">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-svm-atomics-between-host-and-device-work-items">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL SVM Atomics Between Host and Device Work-Items - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-svm-atomics-between-host-and-device-work-items" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Shared Virtual Memory (SVM) in OpenCL provides a unified virtual address space across host CPU threads and device work-items, removing the need for manual buffer copies. When host threads and device work-items access the exact same memory location concur" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-svm-atomics-between-host-and-device-work-items">OpenCL
+SVM Atomics Between Host and Device Work-Items</h1>
+<p>Shared Virtual Memory (SVM) in OpenCL provides a unified virtual
+address space across host CPU threads and device work-items, removing
+the need for manual buffer copies. When host threads and device
+work-items access the exact same memory location concurrently, atomic
+operations govern memory synchronization, data consistency, and ordering
+across the compute boundary. However, atomic operations only function
+properly across host and device boundaries if the underlying OpenCL
+implementation supports fine-grained SVM atomics and developers apply
+the correct memory scopes and consistency models.</p>
+<h3 id="svm-capabilities-and-prerequisites">SVM Capabilities and
+Prerequisites</h3>
+<p>Not all SVM implementations support concurrent cross-device atomic
+operations. OpenCL categorizes SVM into distinct levels of
+capability:</p>
+<ul>
+<li><strong>Coarse-Grained SVM:</strong> Synchronization occurs strictly
+at OpenCL command boundaries (such as map and unmap operations).
+Concurrent atomic updates between host and device are not
+supported.</li>
+<li><strong>Fine-Grained Buffer SVM:</strong> Allows concurrent access
+to different virtual addresses, but simultaneous reads and writes to the
+exact same address require the <code>CL_DEVICE_SVM_ATOMICS</code>
+capability.</li>
+<li><strong>Fine-Grained System SVM:</strong> Extends virtual memory
+sharing to the entire host system address space. When paired with
+<code>CL_DEVICE_SVM_ATOMICS</code>, atomic operations can target any
+shared pointer without requiring explicit allocation via
+<code>clSVMAlloc</code>.</li>
+</ul>
+<p>If <code>CL_DEVICE_SVM_ATOMICS</code> is not reported in the device's
+<code>CL_DEVICE_SVM_CAPABILITIES</code> query, concurrent atomic
+operations between host threads and device work-items on the same memory
+location result in undefined behavior and data races.</p>
+<h3 id="the-unified-memory-model-and-memory-scopes">The Unified Memory
+Model and Memory Scopes</h3>
+<p>Starting with OpenCL 2.0, the OpenCL memory model was aligned with
+the C11 and C++11 memory models. This alignment enables host threads
+(using standard C11 <code>stdatomic.h</code> or C++
+<code>std::atomic</code>) and device work-items (using OpenCL atomic
+functions) to synchronize safely.</p>
+<p>The defining factor in cross-device synchronization is the
+<strong>memory scope</strong>:</p>
+<ul>
+<li><code>memory_scope_work_item</code>: Confined to a single
+work-item.</li>
+<li><code>memory_scope_work_group</code>: Synchronizes only work-items
+within the same work-group.</li>
+<li><code>memory_scope_device</code>: Synchronizes all work-items on
+that specific OpenCL device, but <strong>excludes</strong> the host CPU
+and other OpenCL devices.</li>
+<li><code>memory_scope_all_svm_devices</code>: Synchronizes across the
+host CPU, the executing device, and any other devices sharing the SVM
+space.</li>
+</ul>
+<p>To establish synchronization between a host thread and an OpenCL
+work-item, the OpenCL atomic operation must explicitly specify
+<code>memory_scope_all_svm_devices</code> (or
+<code>memory_scope_all_devices</code>). Using
+<code>memory_scope_device</code> or narrower scopes isolates the
+operation to the device's internal memory hierarchy, causing host
+updates to remain invisible or unordered.</p>
+<h3 id="memory-ordering-and-visibility">Memory Ordering and
+Visibility</h3>
+<p>Atomic operations across host and device enforce memory ordering
+guarantees matching the standard C++ memory model:</p>
+<ul>
+<li><strong>Relaxed (<code>memory_order_relaxed</code>):</strong>
+Guarantees atomicity of the single operation (e.g., no torn reads or
+writes), but imposes no synchronization or ordering constraints on
+surrounding memory accesses.</li>
+<li><strong>Acquire and Release (<code>memory_order_acquire</code>,
+<code>memory_order_release</code>,
+<code>memory_order_acq_rel</code>):</strong> A release atomic on the
+host synchronizes with an acquire atomic on the device (and vice versa).
+This establishes a formal <em>happens-before</em> relationship, ensuring
+that all non-atomic writes made prior to the release operation become
+visible to the acquiring entity once the atomic condition evaluates
+true.</li>
+<li><strong>Sequentially Consistent
+(<code>memory_order_seq_cst</code>):</strong> Enforces a globally
+consistent order across all participating host threads and OpenCL
+work-items, though it carries higher synchronization overhead over
+interconnects like PCIe.</li>
+</ul>
+<h3 id="hardware-execution-and-lock-free-guarantees">Hardware Execution
+and Lock-Free Guarantees</h3>
+<p>At the hardware level, cross-device atomics depend on cache-coherency
+protocols between the CPU host and the accelerator:</p>
+<ol type="1">
+<li><strong>Integrated Systems (APUs/SoCs):</strong> The CPU and GPU
+share physical RAM and unified coherent interconnects (e.g.,
+bidirectional snooping). Atomic operations route directly through shared
+caches or the main memory controller, minimizing latency.</li>
+<li><strong>Discrete Devices (PCIe / CXL):</strong> Atomic transactions
+must route through interfaces supporting hardware coherency or atomic
+packet transfers (e.g., PCIe 3.0+ Atomic Operations routing, Address
+Translation Services (ATS), or Compute Express Link).</li>
+</ol>
+<p>Both the host and the OpenCL device must execute these operations in
+a lock-free manner. If a host library falls back to an internal mutex or
+OS-level primitive while the device relies on hardware bus-level atomic
+primitives, the synchronization will fail. Developers should verify
+lock-free execution using <code>atomic_is_lock_free()</code> in device
+code and <code>std::atomic::is_lock_free</code> on the host.</p>
+<h3 id="performance-considerations">Performance Considerations</h3>
+<p>While fine-grained SVM atomics provide high programming flexibility,
+frequent cross-device atomic updates on the same cache line can lead to
+severe cache thrashing. Bouncing ownership of a cache line between CPU
+caches and discrete GPU caches over external interconnects introduces
+significant latency. Optimal designs minimize the frequency of
+<code>memory_scope_all_svm_devices</code> synchronization, aggregating
+data locally within device work-groups or host threads before issuing
+final cross-boundary atomic updates.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

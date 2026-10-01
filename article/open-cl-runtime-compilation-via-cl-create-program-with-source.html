@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Runtime Compilation via clCreateProgramWithSource - opencl</title>
+    <meta name="description" content="OpenCL allows applications to compile compute kernels at runtime from raw source code strings, providing hardware independence and device-specific optimizations. By utilizing the clCreateProgramWithSource function, developers load OpenCL C source code di">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-runtime-compilation-via-cl-create-program-with-source">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Runtime Compilation via clCreateProgramWithSource - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-runtime-compilation-via-cl-create-program-with-source" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL allows applications to compile compute kernels at runtime from raw source code strings, providing hardware independence and device-specific optimizations. By utilizing the clCreateProgramWithSource function, developers load OpenCL C source code di" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-runtime-compilation-via-clcreateprogramwithsource">OpenCL
+Runtime Compilation via clCreateProgramWithSource</h1>
+<p>OpenCL allows applications to compile compute kernels at runtime from
+raw source code strings, providing hardware independence and
+device-specific optimizations. By utilizing the
+<code>clCreateProgramWithSource</code> function, developers load OpenCL
+C source code directly into a context, compile it just-in-time (JIT)
+using the platform's vendor driver, and extract executable kernels
+tailored specifically to the host system's GPU or CPU architecture.</p>
+<h3 id="1-ingesting-source-code-with-clcreateprogramwithsource">1.
+Ingesting Source Code with <code>clCreateProgramWithSource</code></h3>
+<p>The process begins by feeding raw OpenCL C source code (as an array
+of null-terminated strings) into the OpenCL runtime using
+<code>clCreateProgramWithSource</code>.</p>
+<p>At this stage, the OpenCL driver performs the following actions:</p>
+<ul>
+<li>Validates that the input strings and the provided
+<code>cl_context</code> are valid.</li>
+<li>Allocates an uncompiled <code>cl_program</code> object.</li>
+<li>Copies or references the source strings into the program object's
+internal memory.</li>
+</ul>
+<p>No syntax validation, parsing, or target machine code generation
+occurs during this call. The program object remains in an unbuilt
+state.</p>
+<h3 id="2-just-in-time-jit-compilation-with-clbuildprogram">2.
+Just-In-Time (JIT) Compilation with <code>clBuildProgram</code></h3>
+<p>Once the <code>cl_program</code> object is instantiated, the host
+application triggers actual compilation by calling
+<code>clBuildProgram</code>. This function accepts the program object, a
+list of target devices, compilation flags (such as optimization levels,
+macro definitions, and include directories), and optional callback
+pointers.</p>
+<p>During <code>clBuildProgram</code>, the driver’s internal compiler
+toolchain—often an integrated LLVM/Clang infrastructure—takes over:</p>
+<ol type="1">
+<li><strong>Frontend Parsing:</strong> The driver parses the OpenCL C
+source code, checking for syntax errors, type mismatches, and compliance
+with the OpenCL C specification.</li>
+<li><strong>Intermediate Representation (IR):</strong> The source code
+is transformed into an intermediate representation (such as LLVM IR or
+SPIR-V). High-level, target-independent optimizations (like dead code
+elimination and loop unrolling) are performed.</li>
+<li><strong>Backend Code Generation:</strong> The backend compiler
+translates the IR into native device microcode (or an intermediate
+assembly like NVIDIA PTX or AMD GCN/RDNA ISA). Target-specific
+optimizations are applied, accounting for local memory constraints,
+register allocation, SIMD/warp width, and instruction scheduling.</li>
+</ol>
+<p>If the compilation succeeds, the <code>cl_program</code> object
+stores the generated binary code internally for each specified
+device.</p>
+<h3 id="3-handling-diagnostics-and-build-logs">3. Handling Diagnostics
+and Build Logs</h3>
+<p>Because compilation occurs at runtime, compiler errors cannot be
+caught at host application build time. If <code>clBuildProgram</code>
+returns an error (such as <code>CL_BUILD_PROGRAM_FAILURE</code>), the
+runtime retains the compiler's diagnostic output.</p>
+<p>Developers retrieve compilation errors, warnings, and notes by
+querying <code>clGetProgramBuildInfo</code> with the
+<code>CL_PROGRAM_BUILD_LOG</code> flag. This step is critical for
+debugging syntax errors or unsupported extensions on the target
+device.</p>
+<h3 id="4-creating-kernel-objects">4. Creating Kernel Objects</h3>
+<p>After a program builds successfully, the application calls
+<code>clCreateKernel</code> (or <code>clCreateKernelsInProgram</code>),
+specifying the function name marked with the <code>__kernel</code>
+qualifier. The runtime maps the requested function name to the
+corresponding entry point within the compiled native binary, returning a
+<code>cl_kernel</code> object ready to be assigned arguments and
+enqueued for execution.</p>
+<h3 id="advantages-and-considerations">Advantages and
+Considerations</h3>
+<ul>
+<li><strong>Portability:</strong> Source-based runtime compilation
+ensures that the same application can execute across differing GPU
+architectures, vendors, and driver versions without shipping
+pre-compiled binaries for every possible hardware target.</li>
+<li><strong>Specialized Optimizations:</strong> Kernels can be built
+using dynamic flags determined at runtime (e.g., passing matrix
+dimensions as <code>-D</code> preprocessor definitions), enabling the
+compiler to emit highly specialized loop structures and hardcoded
+constant memory accesses.</li>
+<li><strong>Overhead:</strong> JIT compilation introduces execution
+latency during application startup. To mitigate this, OpenCL allows
+applications to extract the compiled native binaries using
+<code>clGetProgramInfo</code> with <code>CL_PROGRAM_BINARIES</code> and
+reload them in future runs using
+<code>clCreateProgramWithBinary</code>.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

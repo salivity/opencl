@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Asynchronous Kernel Error Handling - opencl</title>
+    <meta name="description" content="OpenCL processes kernel execution asynchronously on target compute devices, meaning traditional host-level exception mechanisms such as C++ try-catch blocks cannot directly trap errors occurring during GPU or accelerator execution. Instead, OpenCL relies">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-asynchronous-kernel-error-handling">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Asynchronous Kernel Error Handling - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-asynchronous-kernel-error-handling" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL processes kernel execution asynchronously on target compute devices, meaning traditional host-level exception mechanisms such as C++ try-catch blocks cannot directly trap errors occurring during GPU or accelerator execution. Instead, OpenCL relies" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-asynchronous-kernel-error-handling">OpenCL Asynchronous
+Kernel Error Handling</h1>
+<p>OpenCL processes kernel execution asynchronously on target compute
+devices, meaning traditional host-level exception mechanisms such as C++
+<code>try-catch</code> blocks cannot directly trap errors occurring
+during GPU or accelerator execution. Instead, OpenCL relies on
+non-blocking API return codes, asynchronous context error callbacks, and
+event execution status updates to monitor and report failures.
+Understanding how OpenCL propagates these runtime failures across the
+host-device boundary is critical for writing robust heterogeneous
+applications.</p>
+<h3 id="the-asynchronous-execution-model">The Asynchronous Execution
+Model</h3>
+<p>When a host enqueues a kernel via functions such as
+<code>clEnqueueNDRangeKernel</code>, the OpenCL runtime places the task
+into a command queue and immediately returns control to the host. The
+return value of this initial call only validates the syntax, parameters,
+and whether the command was successfully placed in the queue (returning
+<code>CL_SUCCESS</code>). It does not indicate that the kernel has
+successfully executed, or even started. Any runtime errors encountered
+during actual execution—such as invalid memory access, resource
+exhaustion, or hardware timeouts—occur decoupled from the original
+enqueue call.</p>
+<h3 id="event-based-error-reporting">Event-Based Error Reporting</h3>
+<p>The primary mechanism for tracking asynchronous execution and runtime
+errors is the OpenCL event object (<code>cl_event</code>).</p>
+<p>When enqueuing a kernel, the host can pass a pointer to a
+<code>cl_event</code> variable:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_event kernel_event<span class="op">;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>clEnqueueNDRangeKernel<span class="op">(</span>queue<span class="op">,</span> kernel<span class="op">,</span> work_dim<span class="op">,</span> NULL<span class="op">,</span> global_work_size<span class="op">,</span> local_work_size<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> NULL<span class="op">,</span> <span class="op">&amp;</span>kernel_event<span class="op">);</span></span></code></pre></div>
+<p>During execution, the event's status transitions through states:
+<code>CL_QUEUED</code>, <code>CL_SUBMITTED</code>, and
+<code>CL_RUNNING</code>. If the kernel completes successfully, the
+status becomes <code>CL_COMPLETE</code> (which evaluates to
+<code>0</code>).</p>
+<p>If a runtime error occurs during kernel execution:</p>
+<ol type="1">
+<li>The execution status of the event is set to a negative integer
+corresponding to an OpenCL error code (such as
+<code>CL_OUT_OF_RESOURCES</code> or
+<code>CL_OUT_OF_HOST_MEMORY</code>).</li>
+<li>The host queries this status using <code>clGetEventInfo</code>:</li>
+</ol>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>cl_int execution_status<span class="op">;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>clGetEventInfo<span class="op">(</span>kernel_event<span class="op">,</span> CL_EVENT_COMMAND_EXECUTION_STATUS<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>cl_int<span class="op">),</span> <span class="op">&amp;</span>execution_status<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>execution_status <span class="op">&lt;</span> <span class="dv">0</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// execution_status contains the runtime error code</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="error-cascading-and-synchronization-points">Error Cascading and
+Synchronization Points</h3>
+<p>Runtime errors are frequently surfaced during synchronization
+operations. When the host calls blocking functions such as
+<code>clWaitForEvents</code>, <code>clFinish</code>, or a blocking
+<code>clEnqueueReadBuffer</code>, the runtime evaluates the dependency
+chain.</p>
+<p>If a kernel fails:</p>
+<ul>
+<li>Any subsequent commands in an in-order queue, or commands waiting on
+the failed event in an out-of-order queue, will be aborted.</li>
+<li>These downstream commands report the error code
+<code>CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST</code>.</li>
+<li>Blocking synchronization calls will immediately unblock and return
+an error code reflecting the upstream failure.</li>
+</ul>
+<h3 id="context-notification-callbacks">Context Notification
+Callbacks</h3>
+<p>OpenCL provides an asynchronous error reporting mechanism at the
+context level. When creating a context using
+<code>clCreateContext</code>, developers can specify a callback function
+pointer (<code>pfn_notify</code>):</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> CL_CALLBACK context_error_callback<span class="op">(</span><span class="dt">const</span> <span class="dt">char</span> <span class="op">*</span>errinfo<span class="op">,</span> <span class="dt">const</span> <span class="dt">void</span> <span class="op">*</span>private_info<span class="op">,</span> <span class="dt">size_t</span> cb<span class="op">,</span> <span class="dt">void</span> <span class="op">*</span>user_data<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Log or handle asynchronous driver/hardware errors</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>This callback is invoked by the OpenCL implementation whenever an
+unrecoverable or out-of-band runtime error occurs on the underlying
+device. This typically includes fatal memory faults, driver crashes, or
+device loss (<code>CL_DEVICE_NOT_AVAILABLE</code>). It does not run on
+the host thread that initiated the command, requiring thread-safe
+handling inside the callback body.</p>
+<h3 id="in-kernel-faults-and-undefined-behavior">In-Kernel Faults and
+Undefined Behavior</h3>
+<p>OpenCL C kernels do not support internal exception handling, signal
+catching, or standard stack unwinding. When an in-kernel failure
+occurs:</p>
+<ul>
+<li><strong>Out-of-Bounds Memory Access:</strong> The OpenCL
+specification classifies out-of-bounds global or local memory access as
+undefined behavior. The driver may trigger a hardware MMU fault,
+resulting in a generic <code>CL_OUT_OF_RESOURCES</code> error or context
+termination, or it may silently corrupt memory without failing.</li>
+<li><strong>Division by Zero:</strong> Integer division by zero results
+in undefined behavior. Floating-point division by zero yields IEEE-754
+<code>Inf</code> or <code>NaN</code> values rather than generating an
+exception.</li>
+<li><strong>Infinite Loops and Watchdogs:</strong> Operating systems
+often employ watchdog timers (such as TDR on Windows). If a kernel
+executes longer than the permitted time slice, the driver kills the
+context, resulting in <code>CL_DEVICE_NOT_AVAILABLE</code>.</li>
+</ul>
+<p>To handle these runtime faults reliably, applications must check
+event status codes, monitor the context notification callback, and
+structure kernel pipelines to validate input boundaries prior to
+launch.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

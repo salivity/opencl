@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Updating Octrees and KD-Trees Using OpenCL - opencl</title>
+    <meta name="description" content="Maintaining dynamic spatial partitioning structures like octrees and kd-trees on the GPU requires adapting hierarchical data to massive parallel architectures that lack dynamic memory allocation and deep call stacks. This article details practical method">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/updating-octrees-and-kd-trees-using-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Updating Octrees and KD-Trees Using OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/updating-octrees-and-kd-trees-using-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Maintaining dynamic spatial partitioning structures like octrees and kd-trees on the GPU requires adapting hierarchical data to massive parallel architectures that lack dynamic memory allocation and deep call stacks. This article details practical method" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="updating-octrees-and-kd-trees-using-opencl">Updating Octrees and
+KD-Trees Using OpenCL</h1>
+<p>Maintaining dynamic spatial partitioning structures like octrees and
+kd-trees on the GPU requires adapting hierarchical data to massive
+parallel architectures that lack dynamic memory allocation and deep call
+stacks. This article details practical methods for maintaining and
+updating these structures using OpenCL, focusing on linear tree
+representations, Morton code sorting, bottom-up refitting via atomic
+barriers, and evaluating the trade-offs between incremental structural
+updates and fast full parallel rebuilds.</p>
+<h3 id="flattening-tree-hierarchies-for-opencl">Flattening Tree
+Hierarchies for OpenCL</h3>
+<p>Standard pointer-based tree structures are inefficient on GPUs due to
+dynamic memory management constraints and divergent branch execution. To
+maintain an octree or kd-tree in OpenCL, the tree must be linearized
+into pre-allocated, contiguous <code>cl_mem</code> buffers.</p>
+<ul>
+<li><strong>Index-Based Arrays:</strong> Nodes are stored in flat arrays
+where parent-child relationships are tracked via integer offsets rather
+than memory pointers. A typical node structure contains an axis-aligned
+bounding box (AABB), a child index offset, and metadata flags packed
+into vector types (e.g., <code>float4</code>, <code>int4</code>) to
+optimize memory coalescing.</li>
+<li><strong>Linear Octrees (Morton Codes):</strong> Instead of explicit
+hierarchy pointers, primitives are sorted along a space-filling curve
+(Z-order curve) by calculating their 30-bit or 63-bit Morton codes. In
+this structure, the hierarchy is implicit, enabling parallel binary
+searches to locate parent-child relationships.</li>
+</ul>
+<h3 id="fast-dynamic-updates-refitting-vs-rebuilding">Fast Dynamic
+Updates: Refitting vs. Rebuilding</h3>
+<p>When geometry moves, the spatial partitioning structure must reflect
+the changes. Depending on the extent of deformation or movement, two
+primary update paths exist:</p>
+<h4 id="1-bottom-up-aabb-refitting">1. Bottom-Up AABB Refitting</h4>
+<p>If primitives move continuously without drastically altering the
+overall spatial topology, refitting existing nodes is significantly
+faster than rebuilding the entire tree.</p>
+<ol type="1">
+<li><strong>Leaf Update Kernel:</strong> A parallel OpenCL kernel
+assigns one work-item per leaf node. The kernel recalculates the
+bounding box of the leaf based on the updated positions of its contained
+primitives.</li>
+<li><strong>Bottom-Up Propagation:</strong> Propagating bounding volumes
+up to the root cannot use recursion. Instead, OpenCL uses atomic
+counters. Each parent node maintains an atomic flag initialized to zero.
+When a child finishes computing its AABB, it executes an
+<code>atomic_inc</code> on its parent's counter:
+<ul>
+<li>If the child is not the last to complete (the returned value is less
+than the child count minus one), the work-item terminates.</li>
+<li>The final child to finish (the one that advances the counter to the
+child count) processes the parent node, aggregates the bounding boxes of
+all children, and moves up to the next hierarchical level.</li>
+</ul></li>
+</ol>
+<p>This synchronization pattern ensures that work-items do not stall in
+busy-wait loops, maintaining high compute utilization.</p>
+<h4 id="2-full-parallel-rebuild-via-sort-and-extract">2. Full Parallel
+Rebuild via Sort-and-Extract</h4>
+<p>When primitives experience large, discontinuous transformations, the
+existing tree topology degrades, resulting in overlapping bounding boxes
+and poor spatial culling. In OpenCL, rebuilding a linear tree from
+scratch is frequently faster than restructuring an unbalanced tree.</p>
+<ol type="1">
+<li><strong>Generate Keys:</strong> Compute the centroid and Morton code
+for each moving primitive in parallel using a mapping kernel.</li>
+<li><strong>Parallel Radix Sort:</strong> Sort the primitive indices
+using their Morton codes. An OpenCL parallel radix sort implementation
+(using local memory for histogram calculation and prefix-sums/scans)
+reorders primitives efficiently.</li>
+<li><strong>Hierarchy Construction (Karras Algorithm):</strong> Octrees
+and bounding volume hierarchies can be generated concurrently in a
+single pass over the sorted array. A kernel assigns one work-item to
+each split between elements. By determining the common prefix length
+between adjacent Morton codes, the kernel establishes internal node
+split positions and child ranges without global synchronization.</li>
+</ol>
+<h3 id="handling-kd-tree-maintenance">Handling KD-Tree Maintenance</h3>
+<p>KD-trees partition space using splitting planes (alternating axes or
+Surface Area Heuristic [SAH]) rather than regular cubic subdivisions,
+making maintenance more complex than octrees.</p>
+<ul>
+<li><strong>Refitting Limits:</strong> Because kd-tree split planes are
+static, moving primitives can violate plane boundaries, rendering pure
+AABB refitting invalid if an object crosses into a neighboring spatial
+cell.</li>
+<li><strong>Median-Split Fast Rebuild:</strong> For dynamic kd-trees,
+maintaining strict SAH splits at runtime is cost-prohibitive. Instead,
+implement a GPU-friendly spatial median split. Use the OpenCL kernel to
+calculate the spatial midpoint of the bounding box at the current tree
+depth, partition primitives using parallel compaction
+(<code>cl_mem</code> stream compaction), and proceed down to the maximum
+allowed depth.</li>
+<li><strong>Loose Bounds:</strong> Alternatively, implement a "loose"
+kd-tree structure where leaf boundaries are extended by an overlap
+margin. Small primitive movements within this margin do not require tree
+updates, reducing the update frequency to only when primitives breach
+the margin boundaries.</li>
+</ul>
+<h3 id="opencl-memory-and-execution-considerations">OpenCL Memory and
+Execution Considerations</h3>
+<ul>
+<li><strong>Avoiding Buffer Reallocation:</strong> Pre-allocate maximum
+node bounds at initialization using <code>CL_MEM_READ_WRITE</code>.
+Rebuilding or updating trees in-place avoids the latency of host-side
+memory allocations and <code>clSetKernelArg</code> updates.</li>
+<li><strong>Work-Group Local Memory:</strong> During radix sorting and
+leaf node reduction, cache bounding boxes in <code>__local</code> memory
+to avoid high-latency global memory round trips.</li>
+<li><strong>Divergence Mitigation:</strong> When traversing or updating
+kd-trees and octrees, structure kernels to minimize warp/wavefront
+divergence by ensuring neighboring work-items in a work-group operate on
+spatially adjacent nodes.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

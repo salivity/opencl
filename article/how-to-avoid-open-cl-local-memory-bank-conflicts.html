@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Avoid OpenCL Local Memory Bank Conflicts - opencl</title>
+    <meta name="description" content="OpenCL local memory provides high-bandwidth, low-latency data sharing among work-items within the same work-group. However, because local memory is divided into equally sized, independent memory banks, simultaneous access by multiple work-items to differ">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-to-avoid-open-cl-local-memory-bank-conflicts">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How to Avoid OpenCL Local Memory Bank Conflicts - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-to-avoid-open-cl-local-memory-bank-conflicts" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL local memory provides high-bandwidth, low-latency data sharing among work-items within the same work-group. However, because local memory is divided into equally sized, independent memory banks, simultaneous access by multiple work-items to differ" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-to-avoid-opencl-local-memory-bank-conflicts">How to Avoid
+OpenCL Local Memory Bank Conflicts</h1>
+<p>OpenCL local memory provides high-bandwidth, low-latency data sharing
+among work-items within the same work-group. However, because local
+memory is divided into equally sized, independent memory banks,
+simultaneous access by multiple work-items to different addresses within
+the same bank causes memory serialization known as a bank conflict. This
+article outlines the architecture behind local memory banks and provides
+actionable strategies—including memory padding, optimized access
+strides, and broadcast utilization—to eliminate bank conflicts and
+maximize kernel throughput.</p>
+<h3 id="understanding-local-memory-banks">Understanding Local Memory
+Banks</h3>
+<p>On modern GPU architectures, local memory (often called shared
+memory) is physically divided into a fixed number of banks, typically 32
+banks of 4-byte (32-bit) words.</p>
+<p>Bank assignment is interleaved at the word level:</p>
+<ul>
+<li><strong>Bank Index</strong> =
+<code>(Address / 4 bytes) % Number of Banks</code></li>
+</ul>
+<p>When work-items in a warp or wavefront execute a load or store
+instruction:</p>
+<ul>
+<li><strong>No conflict:</strong> Each work-item accesses an address
+mapped to a unique bank. All requests are served in a single cycle.</li>
+<li><strong>Broadcast/Multicast:</strong> Multiple work-items read the
+exact same address within the same bank. The hardware serves the data
+simultaneously in a single transaction without serialization.</li>
+<li><strong>Bank Conflict:</strong> Two or more work-items access
+<em>different</em> addresses residing in the <em>same</em> bank. The
+memory controller must serialize these accesses, increasing latency
+proportionally to the degree of the conflict (e.g., a 2-way conflict
+doubles execution time for that memory transaction).</li>
+</ul>
+<hr />
+<h3 id="key-strategies-to-eliminate-bank-conflicts">Key Strategies to
+Eliminate Bank Conflicts</h3>
+<h4 id="1-add-memory-padding-to-multi-dimensional-allocations">1. Add
+Memory Padding to Multi-Dimensional Allocations</h4>
+<p>The most common cause of bank conflicts occurs when work-items read
+or write columns of a 2D matrix stored in local memory.</p>
+<p>If a 2D tile has a width that is a multiple of the bank count (such
+as 32 words wide):</p>
+<ul>
+<li>Work-item 0 accesses <code>matrix[0][0]</code> (Bank 0)</li>
+<li>Work-item 1 accesses <code>matrix[1][0]</code> (Address offset by 32
+words <span class="math inline">\(\rightarrow\)</span> Bank 0)</li>
+<li>All 32 work-items hit Bank 0, creating a catastrophic 32-way bank
+conflict.</li>
+</ul>
+<p><strong>Solution:</strong> Pad the row dimension by one element (or
+an odd number of words) so that successive rows start in staggered
+banks.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#define TILE_DIM </span><span class="dv">32</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#define PADDED_DIM </span><span class="op">(</span><span class="pp">TILE_DIM </span><span class="op">+</span><span class="pp"> </span><span class="dv">1</span><span class="op">)</span><span class="pp"> </span><span class="co">// Breaks the stride alignment</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> matrixTranspose<span class="op">(</span>__global <span class="dt">float</span><span class="op">*</span> output<span class="op">,</span> __global <span class="dt">float</span><span class="op">*</span> input<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    __local <span class="dt">float</span> tile<span class="op">[</span>TILE_DIM<span class="op">][</span>PADDED_DIM<span class="op">];</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> lx <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> ly <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">1</span><span class="op">);</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Staggered layout prevents bank conflicts during transposed writes/reads</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    tile<span class="op">[</span>ly<span class="op">][</span>lx<span class="op">]</span> <span class="op">=</span> input<span class="op">[...];</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    output<span class="op">[...]</span> <span class="op">=</span> tile<span class="op">[</span>lx<span class="op">][</span>ly<span class="op">];</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="2-maintain-a-unit-stride-stride-1-access-pattern">2. Maintain a
+Unit Stride (Stride-1) Access Pattern</h4>
+<p>Bank conflicts naturally disappear when consecutive work-items access
+consecutive memory addresses.</p>
+<ul>
+<li><strong>Good (Stride 1):</strong> Work-item <span
+class="math inline">\(i\)</span> accesses index <span
+class="math inline">\(i\)</span>. Work-items 0 to 31 access Banks 0 to
+31 simultaneously.</li>
+<li><strong>Bad (Non-Unit Stride):</strong> Work-item <span
+class="math inline">\(i\)</span> accesses index <span
+class="math inline">\(i \times 2\)</span>. Work-items 0 to 15 access
+Banks 0, 2, 4, ..., 30, while work-items 16 to 31 also access Banks 0,
+2, 4, ..., 30, resulting in a 2-way conflict.</li>
+</ul>
+<p>When writing reduction kernels or parallel scans, restructure
+algorithms to use contiguous blocks rather than strided access
+patterns:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Prone to bank conflicts: strided indexing</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span><span class="dt">int</span> stride <span class="op">=</span> <span class="dv">1</span><span class="op">;</span> stride <span class="op">&lt;</span> group_size<span class="op">;</span> stride <span class="op">*=</span> <span class="dv">2</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> index <span class="op">=</span> <span class="dv">2</span> <span class="op">*</span> stride <span class="op">*</span> tid<span class="op">;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>index <span class="op">&lt;</span> group_size<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        shared_data<span class="op">[</span>index<span class="op">]</span> <span class="op">+=</span> shared_data<span class="op">[</span>index <span class="op">+</span> stride<span class="op">];</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co">// Conflict-free: contiguous indexing</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span><span class="dt">int</span> stride <span class="op">=</span> group_size <span class="op">/</span> <span class="dv">2</span><span class="op">;</span> stride <span class="op">&gt;</span> <span class="dv">0</span><span class="op">;</span> stride <span class="op">&gt;&gt;=</span> <span class="dv">1</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>tid <span class="op">&lt;</span> stride<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        shared_data<span class="op">[</span>tid<span class="op">]</span> <span class="op">+=</span> shared_data<span class="op">[</span>tid <span class="op">+</span> stride<span class="op">];</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="3-exploit-the-hardware-broadcast-mechanism">3. Exploit the
+Hardware Broadcast Mechanism</h4>
+<p>When all work-items in a wavefront read from the exact same local
+memory address, the hardware routes the value to all requesting threads
+via a single broadcast transaction. If an algorithm requires a shared
+configuration value, lookup parameter, or pivot element, reading it
+directly from a single local address avoids serialization entirely. Note
+that broadcast only applies to <strong>reads</strong>; simultaneous
+writes to the exact same address cause undefined behavior or race
+conditions.</p>
+<h4 id="4-align-vector-data-types-appropriately">4. Align Vector Data
+Types Appropriately</h4>
+<p>Using OpenCL vector data types like <code>float4</code> (16 bytes) in
+local memory requires understanding bank allocation. A single
+<code>float4</code> spans four consecutive 32-bit banks.</p>
+<ul>
+<li>If work-item 0 reads <code>local_ptr[0]</code> (occupying Banks 0–3)
+and work-item 1 reads <code>local_ptr[1]</code> (occupying Banks 4–7),
+the hardware executes this in multiple cycles because each bank handles
+only one request per cycle.</li>
+<li>On some architectures, wider vector accesses can induce internal
+serialization if memory interfaces are 32-bit. In performance-critical
+kernels, profiling scalar types (<code>float</code>) versus vector types
+(<code>float4</code>) in local memory reveals whether vector operations
+are introducing hidden bank constraints.</li>
+</ul>
+<h4 id="5-reorganize-thread-to-data-mapping">5. Reorganize
+Thread-to-Data Mapping</h4>
+<p>When data cannot be padded easily, remap how work-items map to memory
+coordinates using XOR swizzling or index transformation.</p>
+<p>By using bitwise operations on work-item IDs:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> bank_conflict_free_index <span class="op">=</span> lx <span class="op">^</span> ly<span class="op">;</span></span></code></pre></div>
+<p>Swizzling breaks power-of-two memory access patterns without
+requiring additional memory allocation, effectively distributing
+concurrent requests across distinct banks.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

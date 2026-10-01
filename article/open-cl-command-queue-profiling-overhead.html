@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Command Queue Profiling Overhead - opencl</title>
+    <meta name="description" content="Enabling profiling on an OpenCL command queue via the CLQUEUEPROFILINGENABLE flag provides precise execution timestamps for commands, but it introduces distinct performance overheads. This article outlines the specific costs associated with OpenCL queue">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-command-queue-profiling-overhead">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Command Queue Profiling Overhead - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-command-queue-profiling-overhead" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Enabling profiling on an OpenCL command queue via the CLQUEUEPROFILINGENABLE flag provides precise execution timestamps for commands, but it introduces distinct performance overheads. This article outlines the specific costs associated with OpenCL queue" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-command-queue-profiling-overhead">OpenCL Command Queue
+Profiling Overhead</h1>
+<p>Enabling profiling on an OpenCL command queue via the
+<code>CL_QUEUE_PROFILING_ENABLE</code> flag provides precise execution
+timestamps for commands, but it introduces distinct performance
+overheads. This article outlines the specific costs associated with
+OpenCL queue profiling, including hardware timer latency, disrupted
+driver optimizations, event tracking overhead, and how kernel
+granularity determines the severity of the performance impact.</p>
+<h3 id="hardware-timer-queries-and-latency">Hardware Timer Queries and
+Latency</h3>
+<p>When profiling is active, the OpenCL runtime and hardware device must
+capture 64-bit nanosecond-resolution timestamps for four discrete
+execution phases: command queue, submit, start, and end. Interrogating
+hardware clock counters at kernel launch and termination adds
+instruction-level latency directly to the execution pipeline. While
+reading a timer counter is relatively fast, doing so repeatedly across
+frequent command submissions degrades overall throughput.</p>
+<h3 id="disrupted-driver-optimizations-and-batching">Disrupted Driver
+Optimizations and Batching</h3>
+<p>Modern GPU drivers rely heavily on command batching and aggressive
+pipelining to hide dispatch latency. In a non-profiling queue, multiple
+small operations (such as short kernels or small memory copies) can be
+merged and dispatched as an uninterrupted stream of commands.</p>
+<p>Profiling forces the device to clearly demarcate the transition
+boundaries between individual commands to record exact start and end
+times. This requirement often forces internal synchronization, flushes
+driver command buffers earlier than normal, and limits the driver's
+ability to overlap subsequent operations, leading to pipeline
+bubbles.</p>
+<h3 id="event-object-management-and-host-device-synchronization">Event
+Object Management and Host-Device Synchronization</h3>
+<p>Profiling inherently requires <code>cl_event</code> objects to be
+tracked and retained until the host queries them via
+<code>clGetEventProfilingInfo</code>. Under normal execution, events can
+often be ignored or reclaimed immediately by the runtime once completed.
+With profiling enabled:</p>
+<ul>
+<li><strong>Memory Pressure:</strong> The runtime must maintain internal
+tracking structures and profiling buffers to hold timestamp data for
+every tracked command.</li>
+<li><strong>Delayed Recycling:</strong> Command buffers and execution
+contexts cannot be aggressively recycled until the host explicitly
+releases the associated event objects.</li>
+<li><strong>Synchronization Penalties:</strong> If the host application
+frequently checks event statuses or queries timestamps during an active
+workload, it risks blocking CPU-GPU execution concurrency.</li>
+</ul>
+<h3 id="impact-relative-to-kernel-granularity">Impact Relative to Kernel
+Granularity</h3>
+<p>The overhead of OpenCL profiling is non-uniform and depends heavily
+on the execution duration of individual commands:</p>
+<ul>
+<li><strong>Coarse-Grained Kernels (Milliseconds to Seconds):</strong>
+For large workloads that occupy the compute units for substantial
+periods, the nanosecond-to-microsecond overhead of timestamp recording
+and reduced batching is negligible, often accounting for less than 1% of
+total execution time.</li>
+<li><strong>Fine-Grained Kernels (Microseconds):</strong> For
+applications that dispatch thousands of small kernels or rapid buffer
+transfers in quick succession, the profiling overhead can be massive. In
+extreme cases, the fixed dispatch and timing cost can exceed the actual
+execution time of the compute work, leading to severe performance
+regression.</li>
+</ul>
+<p>Because the <code>CL_QUEUE_PROFILING_ENABLE</code> flag alters
+execution characteristics, developers should only enable it during
+performance tuning phases and ensure it remains disabled in production
+environments.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

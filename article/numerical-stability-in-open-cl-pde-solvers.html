@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Numerical Stability in OpenCL PDE Solvers - opencl</title>
+    <meta name="description" content="Executing partial differential equation (PDE) solvers in OpenCL allows massive parallelization across GPUs and accelerators, but the underlying hardware architecture introduces unique numerical stability challenges. This article examines the core factors">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/numerical-stability-in-open-cl-pde-solvers">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Numerical Stability in OpenCL PDE Solvers - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/numerical-stability-in-open-cl-pde-solvers" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Executing partial differential equation (PDE) solvers in OpenCL allows massive parallelization across GPUs and accelerators, but the underlying hardware architecture introduces unique numerical stability challenges. This article examines the core factors" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="numerical-stability-in-opencl-pde-solvers">Numerical Stability
+in OpenCL PDE Solvers</h1>
+<p>Executing partial differential equation (PDE) solvers in OpenCL
+allows massive parallelization across GPUs and accelerators, but the
+underlying hardware architecture introduces unique numerical stability
+challenges. This article examines the core factors affecting numerical
+stability when porting PDE solvers to OpenCL, including floating-point
+precision, compiler-level optimizations, non-associative parallel
+reductions, time-step constraints, and synchronization barriers.</p>
+<h3 id="floating-point-precision-constraints">Floating-Point Precision
+Constraints</h3>
+<p>Most OpenCL devices (particularly consumer GPUs) optimize heavily for
+single-precision (32-bit float) calculations, often executing
+double-precision (64-bit float) operations at a fraction of the speed.
+However, using 32-bit floats for iterative PDE solvers frequently
+results in rapid accumulation of truncation errors and catastrophic
+cancellation, particularly in high-order spatial stencils or stiff
+differential equations.</p>
+<p>To maintain stability:</p>
+<ul>
+<li>Verify device capabilities for the <code>cl_khr_fp64</code>
+extension before deploying solvers sensitive to round-off drift.</li>
+<li>If limited to single precision, implement compensated summation
+algorithms (such as Kahan summation) or use mixed-precision strategies
+where critical spatial derivatives and updates are accumulated with
+higher precision.</li>
+</ul>
+<h3 id="compiler-flags-and-fast-math-deviations">Compiler Flags and
+Fast-Math Deviations</h3>
+<p>OpenCL compilers provide aggressive optimization flags, such as
+<code>-cl-fast-relaxed-math</code>, <code>-cl-mad-enable</code>, and
+<code>-cl-finite-math-only</code>. While these significantly improve
+execution throughput, they sacrifice strict IEEE 754 compliance:</p>
+<ul>
+<li>Division and square root operations are replaced with low-accuracy
+approximations.</li>
+<li>Fused Multiply-Add (FMA) instructions may be generated
+unpredictably, altering rounding behavior compared to baseline CPU
+models.</li>
+<li>Flush-To-Zero (FTZ) modes may be enabled by default, setting
+subnormal numbers to zero and corrupting operations dependent on minute
+gradient transitions.</li>
+</ul>
+<p>Disable relaxed-math flags for numerical kernels where solver
+convergence relies on exact boundary gradients and strict
+monotonicity.</p>
+<h3 id="non-associative-reductions-and-determinism">Non-Associative
+Reductions and Determinism</h3>
+<p>Floating-point addition is mathematically non-associative:
+<code>(a + b) + c ≠ a + (b + c)</code>. In parallel PDE solvers,
+computing global properties—such as the maximum wave speed for adaptive
+time-stepping or the global residual in iterative linear solvers (e.g.,
+Conjugate Gradient)—requires parallel reduction operations across
+work-items and work-groups.</p>
+<p>Because the execution order of work-groups depends on dynamic GPU
+scheduling, rounding errors vary between runs. This non-determinism can
+alter step sizes or cause erratic convergence paths in highly non-linear
+PDEs. Implement deterministic reduction trees or fixed-order
+hierarchical reductions to maintain reproducibility and stable step-size
+evaluation.</p>
+<h3
+id="courant-friedrichs-lewy-cfl-condition-enforcement">Courant-Friedrichs-Lewy
+(CFL) Condition Enforcement</h3>
+<p>Explicit PDE schemes require strict adherence to the
+Courant-Friedrichs-Lewy (CFL) stability criterion, where the time step
+(<span class="math inline">\(\Delta t\)</span>) must remain below a
+threshold dictated by spatial grid spacing (<span
+class="math inline">\(\Delta x\)</span>) and maximum characteristic
+propagation speed.</p>
+<p>In OpenCL:</p>
+<ul>
+<li>Calculating dynamic <span class="math inline">\(\Delta t\)</span>
+requires computing the global maximum speed across all grid cells at
+each step.</li>
+<li>Because synchronizing across the entire grid requires either
+multiple kernel dispatches or device-wide atomics, developers are often
+tempted to update <span class="math inline">\(\Delta t\)</span>
+infrequently to avoid launch latency.</li>
+<li>Infrequent recalculation of the CFL limit can allow localized shocks
+or fluid instabilities to exceed the stability envelope before the time
+step adjusts, causing solver explosion.</li>
+</ul>
+<h3 id="ghost-cell-synchronization-and-memory-barriers">Ghost Cell
+Synchronization and Memory Barriers</h3>
+<p>Domain decomposition across work-groups relies on halo exchanges
+(ghost cells) stored in OpenCL local memory (<code>__local</code>) or
+global memory:</p>
+<ul>
+<li><strong>Work-Group Level:</strong> Stencil computations reading
+adjacent cells from local memory require explicit barriers using
+<code>barrier(CLK_LOCAL_MEM_FENCE)</code>. Omitting a barrier or placing
+it inside non-uniform conditional branches creates race conditions,
+leading to stale or corrupted halo reads that destabilize the grid
+interface.</li>
+<li><strong>Global Grid Level:</strong> When the PDE grid spans multiple
+work-groups, inter-work-group communication cannot be safely
+synchronized within a single kernel invocation. Splitting iterations
+into distinct kernel executions ensures that all halo exchanges are
+globally committed before the next spatial integration step begins.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

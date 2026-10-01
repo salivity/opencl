@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL and OpenGL Context Sharing with cl_khr_gl_sharing - opencl</title>
+    <meta name="description" content="The clkhrglsharing extension allows OpenCL to directly access OpenGL buffers and textures without copying data through host memory. This article explains how the extension establishes and negotiates context bindings between OpenCL and OpenGL, covering de">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-and-open-gl-context-sharing-with-cl-khr-gl-sharing">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL and OpenGL Context Sharing with cl_khr_gl_sharing - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-and-open-gl-context-sharing-with-cl-khr-gl-sharing" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The clkhrglsharing extension allows OpenCL to directly access OpenGL buffers and textures without copying data through host memory. This article explains how the extension establishes and negotiates context bindings between OpenCL and OpenGL, covering de" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-and-opengl-context-sharing-with-cl_khr_gl_sharing">OpenCL
+and OpenGL Context Sharing with cl_khr_gl_sharing</h1>
+<p>The <code>cl_khr_gl_sharing</code> extension allows OpenCL to
+directly access OpenGL buffers and textures without copying data through
+host memory. This article explains how the extension establishes and
+negotiates context bindings between OpenCL and OpenGL, covering device
+discovery, OS-specific context properties, context initialization via
+<code>clCreateContext</code>, and the synchronization mechanisms that
+govern shared resource execution.</p>
+<h3 id="device-discovery-and-querying-capabilities">Device Discovery and
+Querying Capabilities</h3>
+<p>Before creating a shared context, the application must verify that
+both the OpenCL platform and the targeted device support the
+<code>cl_khr_gl_sharing</code> extension. Because OpenGL rendering
+contexts are tightly coupled to specific physical hardware, OpenCL must
+ensure that the OpenCL device selected resides on the exact same
+physical GPU driving the OpenGL context.</p>
+<p>The extension introduces the function
+<code>clGetGLContextInfoKHR</code>, which determines hardware
+compatibility. By passing the OpenGL context handles and querying
+<code>CL_CURRENT_DEVICE_FOR_GL_CONTEXT_KHR</code>, the OpenCL runtime
+inspects the active OpenGL context and returns the corresponding
+<code>cl_device_id</code>. Applications can also query
+<code>CL_DEVICES_FOR_GL_CONTEXT_KHR</code> to retrieve a list of all
+OpenCL devices capable of interoperating with that specific OpenGL
+context.</p>
+<h3 id="os-specific-context-properties">OS-Specific Context
+Properties</h3>
+<p>Context negotiation occurs at the time of OpenCL context creation
+using <code>clCreateContext</code>. The developer constructs a
+<code>cl_context_properties</code> array containing key-value pairs that
+link the active platform and OpenGL context handles to the new OpenCL
+context. Because windowing systems and OpenGL context managers vary by
+operating system, the required property tokens differ:</p>
+<ul>
+<li><strong>Microsoft Windows (WGL):</strong> Requires
+<code>CL_GL_CONTEXT_KHR</code> pointing to the OpenGL context handle
+(<code>HGLRC</code>) and <code>CL_WGL_HDC_KHR</code> pointing to the
+device context handle (<code>HDC</code>).</li>
+<li><strong>Linux / Unix (GLX):</strong> Requires
+<code>CL_GL_CONTEXT_KHR</code> pointing to the <code>GLXContext</code>
+and <code>CL_GLX_DISPLAY_KHR</code> pointing to the X11
+<code>Display</code> connection.</li>
+<li><strong>Embedded Systems / Wayland (EGL):</strong> Requires
+<code>CL_GL_CONTEXT_KHR</code> pointing to the <code>EGLContext</code>
+and <code>CL_EGL_DISPLAY_KHR</code> pointing to the
+<code>EGLDisplay</code>.</li>
+<li><strong>macOS (CGL):</strong> Requires
+<code>CL_CGL_SHAREGROUP_KHR</code> pointing to the
+<code>CGLShareGroupObj</code> associated with the OpenGL context.</li>
+</ul>
+<p>These tokens, alongside <code>CL_CONTEXT_PLATFORM</code>, are passed
+into <code>clCreateContext</code>. The OpenCL driver reads these
+handles, queries the underlying graphics driver, and establishes
+internal shared memory mappings between the two APIs.</p>
+<h3 id="memory-object-binding-and-lifecycle">Memory Object Binding and
+Lifecycle</h3>
+<p>Once the context has been created with the shared properties, OpenCL
+can wrap existing OpenGL resources. The application uses dedicated
+OpenCL creation functions rather than standard memory allocation:</p>
+<ul>
+<li><code>clCreateFromGLBuffer</code> wraps OpenGL Vertex Buffer Objects
+(VBOs) or Pixel Buffer Objects (PBOs).</li>
+<li><code>clCreateFromGLTexture</code> (or legacy variants like
+<code>clCreateFromGLTexture2D</code>) wraps OpenGL textures or
+renderbuffers.</li>
+</ul>
+<p>The OpenCL runtime validates that the format, dimensionality, and
+target of the OpenGL object are compatible with the OpenCL device.
+Rather than allocating new VRAM, OpenCL maps its <code>cl_mem</code>
+handle directly to the underlying GPU virtual memory address of the
+OpenGL resource.</p>
+<h3 id="synchronization-and-ownership-hand-off">Synchronization and
+Ownership Hand-off</h3>
+<p>Negotiating context access requires explicit synchronization to
+prevent race conditions, as OpenCL command queues and OpenGL rendering
+pipelines execute asynchronously.</p>
+<p>Before OpenCL can read or write to a shared resource, it must acquire
+ownership using <code>clEnqueueAcquireGLObjects</code>. Prior to this
+call, the application must issue <code>glFlush</code> or use OpenGL sync
+objects (<code>glFenceSync</code>) to guarantee that all pending OpenGL
+commands on that resource have finished execution.</p>
+<p>While OpenCL holds the resource, OpenGL must not access it. Once
+OpenCL completes its work, it releases ownership back to OpenGL using
+<code>clEnqueueReleaseGLObjects</code>. The application can either wait
+for the OpenCL release event to complete or use the
+<code>cl_khr_gl_event</code> extension to generate an event directly
+consumed by the OpenGL pipeline, allowing the GPU to transition
+workloads seamlessly between compute and graphics pipelines.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

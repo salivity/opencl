@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Memory Strides and Hardware Prefetching - opencl</title>
+    <meta name="description" content="This article examines how hardware prefetchers interact with global memory access strides in OpenCL compute kernels. When OpenCL work-items access global memory, the physical stride—the step size between memory addresses requested by adjacent work-item">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-memory-strides-and-hardware-prefetching">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Memory Strides and Hardware Prefetching - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-memory-strides-and-hardware-prefetching" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article examines how hardware prefetchers interact with global memory access strides in OpenCL compute kernels. When OpenCL work-items access global memory, the physical stride—the step size between memory addresses requested by adjacent work-item" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-memory-strides-and-hardware-prefetching">OpenCL Memory
+Strides and Hardware Prefetching</h1>
+<p>This article examines how hardware prefetchers interact with global
+memory access strides in OpenCL compute kernels. When OpenCL work-items
+access global memory, the physical stride—the step size between memory
+addresses requested by adjacent work-items or sequential loop
+iterations—dictates whether hardware prefetch mechanisms accelerate data
+transfer or degrade performance. Understanding this relationship reveals
+why certain strided access patterns trigger memory amplification, cache
+thrashing, and stalls on modern heterogeneous architectures.</p>
+<h3 id="the-mechanics-of-access-strides-in-opencl">The Mechanics of
+Access Strides in OpenCL</h3>
+<p>In OpenCL, global memory bandwidth is maximized when work-items
+within a work-group access adjacent memory addresses in parallel. This
+is known as a unit stride (stride-1) access pattern.</p>
+<ul>
+<li><strong>Unit Stride (Stride-1):</strong> Work-item <span
+class="math inline">\(i\)</span> accesses address <span
+class="math inline">\(A\)</span>, while work-item <span
+class="math inline">\(i+1\)</span> accesses address <span
+class="math inline">\(A + 1\)</span>.</li>
+<li><strong>Non-Unit Stride (Stride-<span
+class="math inline">\(N\)</span>):</strong> Work-items access memory
+separated by an offset <span class="math inline">\(N\)</span> (e.g.,
+address <span class="math inline">\(A + (i \times N)\)</span>), commonly
+found when accessing interleaved data structures like Arrays of
+Structures (AoS) or transposing multi-dimensional matrices.</li>
+<li><strong>Irregular/Gather Stride:</strong> Memory addresses are
+determined dynamically via lookup tables or pointer chasing, creating
+unpredictable step sizes.</li>
+</ul>
+<h3 id="how-hardware-prefetchers-function">How Hardware Prefetchers
+Function</h3>
+<p>Hardware prefetchers analyze patterns in the memory access stream to
+fetch data from higher-latency memory tiers (DRAM or L2) into
+lower-latency caches (L1 or registers) before an execution unit
+explicitly issues the load instruction.</p>
+<ul>
+<li><strong>Stream/Spatial Prefetchers:</strong> Detect consecutive
+cache line accesses and fetch upcoming adjacent lines.</li>
+<li><strong>Stride Prefetchers:</strong> Track history tables of
+instruction addresses (Program Counters) and record the distance between
+consecutive memory references. If a consistent delta (<span
+class="math inline">\(\Delta = \text{Address}_k -
+\text{Address}_{k-1}\)</span>) is detected, the prefetcher issues
+speculative loads for <span class="math inline">\(\text{Address} +
+\Delta, \text{Address} + 2\Delta\)</span>, and so forth.</li>
+</ul>
+<h3 id="the-interaction-between-strides-and-prefetchers">The Interaction
+Between Strides and Prefetchers</h3>
+<h4 id="1-coalescing-vs-prefetching-under-unit-strides">1. Coalescing
+vs. Prefetching Under Unit Strides</h4>
+<p>Under a unit stride, an OpenCL wavefront (or warp) issues a coalesced
+memory request. Hardware memory controllers group these requests into
+the minimum number of cache-line-sized transactions (typically 32 to 128
+bytes).</p>
+<p>Hardware prefetchers easily identify this linear, sequential
+progression through memory. Spatial prefetchers trigger proactive loads
+for the subsequent cache lines, hiding memory latency almost entirely
+when access patterns match the prefetcher’s lookahead distance.</p>
+<h4 id="2-non-unit-constant-strides-small-n">2. Non-Unit Constant
+Strides (Small <span class="math inline">\(N\)</span>)</h4>
+<p>When work-items execute with a small non-unit stride (e.g., reading
+every fourth integer), two separate phenomena occur:</p>
+<ul>
+<li><strong>Memory Coalescing Failure:</strong> Instead of loading a
+single cache line that serves all work-items in a sub-group, the
+hardware must fetch multiple distinct cache lines to fulfill the same
+instruction.</li>
+<li><strong>Prefetcher Triggering:</strong> On processors with
+stride-aware prefetchers (such as CPUs and certain modern GPU compute
+units), the prefetcher adapts to the constant step size <span
+class="math inline">\(N\)</span>. It will speculative load future cache
+lines separated by <span class="math inline">\(N\)</span>.</li>
+</ul>
+<p>While this avoids direct stall latency on future operations, it
+causes <strong>memory bandwidth amplification</strong>: the hardware
+fetches entire 64-byte or 128-byte cache lines only to consume a
+fraction of the data within them. Consequently, the prefetcher
+aggressively exhausts memory bus bandwidth by loading non-contiguous
+blocks.</p>
+<h4 id="3-large-or-varying-strides-large-n-or-variable-deltas">3. Large
+or Varying Strides (Large <span class="math inline">\(N\)</span> or
+Variable Deltas)</h4>
+<p>When the stride <span class="math inline">\(N\)</span> exceeds the
+hardware tracking capability or the physical distance of the
+prefetcher's stream buffer window, performance degrades sharply:</p>
+<ul>
+<li><strong>Prefetch Table Thrashing:</strong> Hardware prefetch units
+use finite-capacity tracking tables (e.g., Reference Prediction Tables).
+If a work-group spawns thousands of divergent or widely spaced memory
+streams, the stride history table suffers constant cache evictions,
+causing the prefetcher to deactivate or generate incorrect speculative
+requests.</li>
+<li><strong>Cache Pollution:</strong> Speculative reads for large
+strides often arrive too late to hide latency or evict active, useful
+data from L1/L2 caches to store data that may not be consumed
+immediately.</li>
+</ul>
+<h3 id="architectural-discrepancies-gpu-vs-cpu-targets">Architectural
+Discrepancies: GPU vs. CPU Targets</h3>
+<p>The manifestation of this interaction varies significantly depending
+on the target hardware executing the OpenCL kernel:</p>
+<ul>
+<li><strong>CPUs as OpenCL Targets:</strong> CPU cores rely heavily on
+deep, aggressive multi-level stride and stream prefetchers to mask high
+memory latency. While a constant stride-<span
+class="math inline">\(N\)</span> is frequently detected and prefetched
+successfully, the low cache-line utilization (bytes used versus bytes
+transferred) often caps compute throughput at the physical memory bus
+limit.</li>
+<li><strong>GPUs as OpenCL Targets:</strong> GPUs rely primarily on
+massive multithreading and fast context switching between wavefronts
+rather than deep speculative prefetchers to hide latency. Modern GPUs do
+feature L2 and system-level cache prefetchers, but these are optimized
+strictly for linear streaming. Non-unit strides break SIMD memory
+coalescing at the instruction level, flooding the memory pipeline with
+independent requests that can overwhelm the GPU's internal request
+queues and disable hardware prefetching logic.</li>
+</ul>
+<h3 id="optimizing-opencl-for-prefetcher-efficiency">Optimizing OpenCL
+for Prefetcher Efficiency</h3>
+<p>To ensure hardware prefetchers complement OpenCL kernel execution
+rather than bottleneck it:</p>
+<ol type="1">
+<li><strong>Transform AoS to SoA:</strong> Refactor data from Arrays of
+Structures to Structures of Arrays to eliminate artificial strides
+inside work-item batches.</li>
+<li><strong>Local Memory (LDS) Staging:</strong> For unavoidable strided
+algorithms (like matrix transpositions), load data into
+<code>__local</code> memory using coalesced, stride-1 global loads,
+synchronize via <code>barrier(CLK_LOCAL_MEM_FENCE)</code>, and perform
+the strided access pattern entirely inside the low-latency local
+scratchpad.</li>
+<li><strong>Explicit Vector Loads:</strong> Use built-in vector types
+(e.g., <code>vload4</code>, <code>vload8</code>) when reading sequential
+elements to force the generation of wide, predictable memory
+transactions that help hardware stream analyzers establish reliable
+prefetch streams.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Partition OpenCL CPU Devices with clCreateSubDevices - opencl</title>
+    <meta name="description" content="This article explains how an OpenCL host application divides a multicore CPU root device into independent sub-devices using the clCreateSubDevices API function. It details the prerequisites for querying device partition capabilities, the supported partit">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/partition-open-cl-cpu-devices-with-cl-create-sub-devices">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Partition OpenCL CPU Devices with clCreateSubDevices - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/partition-open-cl-cpu-devices-with-cl-create-sub-devices" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explains how an OpenCL host application divides a multicore CPU root device into independent sub-devices using the clCreateSubDevices API function. It details the prerequisites for querying device partition capabilities, the supported partit" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="partition-opencl-cpu-devices-with-clcreatesubdevices">Partition
+OpenCL CPU Devices with clCreateSubDevices</h1>
+<p>This article explains how an OpenCL host application divides a
+multicore CPU root device into independent sub-devices using the
+<code>clCreateSubDevices</code> API function. It details the
+prerequisites for querying device partition capabilities, the supported
+partitioning schemes—such as equal splits, explicit core counts, and
+cache-affinity domains—and the exact sequence of API calls required to
+allocate and release these sub-devices safely.</p>
+<h2 id="understanding-device-partitioning">Understanding Device
+Partitioning</h2>
+<p>Device partitioning in OpenCL allows an application to break a single
+compute device (commonly a multicore CPU) into multiple distinct
+<code>cl_device_id</code> handles called sub-devices. Each sub-device
+exposes its own subset of compute units, enabling independent command
+queues, dedicated context control, cache localization, and reduced
+thread contention across Non-Uniform Memory Access (NUMA) nodes.</p>
+<h2 id="checking-for-partition-support">Checking for Partition
+Support</h2>
+<p>Before invoking <code>clCreateSubDevices</code>, the application must
+query the root device using <code>clGetDeviceInfo</code> to verify that
+partitioning is supported:</p>
+<ol type="1">
+<li><strong><code>CL_DEVICE_PARTITION_MAX_SUB_DEVICES</code></strong>:
+Returns a <code>cl_uint</code> indicating the maximum number of
+sub-devices that can be created from this device. If this returns
+<code>0</code>, partitioning is not supported.</li>
+<li><strong><code>CL_DEVICE_PARTITION_PROPERTIES</code></strong>:
+Returns an array of <code>cl_device_partition_property</code> flags
+detailing which partitioning mechanisms the hardware and driver
+implement.</li>
+</ol>
+<h2 id="partitioning-schemes">Partitioning Schemes</h2>
+<p>The <code>clCreateSubDevices</code> function accepts a property list
+defined as an array of <code>cl_device_partition_property</code>,
+terminated by <code>0</code>. OpenCL provides three primary strategies
+for partitioning:</p>
+<h3 id="1-partition-equally-cl_device_partition_equally">1. Partition
+Equally (<code>CL_DEVICE_PARTITION_EQUALLY</code>)</h3>
+<p>Divides the root device into sub-devices that each contain an
+identical number of compute units.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_device_partition_property properties<span class="op">[]</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    CL_DEVICE_PARTITION_EQUALLY<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="dv">4</span><span class="op">,</span> <span class="co">// Number of compute units per sub-device</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span>  <span class="co">// Terminating zero</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
+<h3 id="2-partition-by-counts-cl_device_partition_by_counts">2.
+Partition by Counts (<code>CL_DEVICE_PARTITION_BY_COUNTS</code>)</h3>
+<p>Divides compute units into specific, non-uniform subsets. The list of
+counts is terminated by
+<code>CL_DEVICE_PARTITION_BY_COUNTS_LIST_END</code>.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>cl_device_partition_property properties<span class="op">[]</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    CL_DEVICE_PARTITION_BY_COUNTS<span class="op">,</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="dv">2</span><span class="op">,</span> <span class="co">// 2 compute units for the first sub-device</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="dv">4</span><span class="op">,</span> <span class="co">// 4 compute units for the second sub-device</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    CL_DEVICE_PARTITION_BY_COUNTS_LIST_END<span class="op">,</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
+<h3
+id="3-partition-by-affinity-domain-cl_device_partition_by_affinity_domain">3.
+Partition by Affinity Domain
+(<code>CL_DEVICE_PARTITION_BY_AFFINITY_DOMAIN</code>)</h3>
+<p>Splits the device according to its physical hardware topology and
+cache hierarchy. This is the most common approach for CPU devices to
+maximize memory locality and NUMA performance. Supported affinity flags
+include:</p>
+<ul>
+<li><code>CL_DEVICE_AFFINITY_DOMAIN_NUMA</code></li>
+<li><code>CL_DEVICE_AFFINITY_DOMAIN_L4_CACHE</code></li>
+<li><code>CL_DEVICE_AFFINITY_DOMAIN_L3_CACHE</code></li>
+<li><code>CL_DEVICE_AFFINITY_DOMAIN_L2_CACHE</code></li>
+<li><code>CL_DEVICE_AFFINITY_DOMAIN_L1_CACHE</code></li>
+<li><code>CL_DEVICE_AFFINITY_DOMAIN_NEXT_PARTITIONABLE</code></li>
+</ul>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>cl_device_partition_property properties<span class="op">[]</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    CL_DEVICE_PARTITION_BY_AFFINITY_DOMAIN<span class="op">,</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    CL_DEVICE_AFFINITY_DOMAIN_NUMA<span class="op">,</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
+<h2 id="executing-clcreatesubdevices">Executing clCreateSubDevices</h2>
+<p>The creation process requires a two-step query to allocate memory and
+retrieve the sub-devices:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>cl_uint num_sub_devices <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co">// Step 1: Query the number of resulting sub-devices</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>cl_int err <span class="op">=</span> clCreateSubDevices<span class="op">(</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    root_device<span class="op">,</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    properties<span class="op">,</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span><span class="op">,</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    NULL<span class="op">,</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span>num_sub_devices</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>err <span class="op">!=</span> CL_SUCCESS <span class="op">||</span> num_sub_devices <span class="op">==</span> <span class="dv">0</span><span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Handle error or lack of partition support</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="co">// Step 2: Allocate memory and populate the sub-device handles</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>cl_device_id<span class="op">*</span> sub_devices <span class="op">=</span> <span class="op">(</span>cl_device_id<span class="op">*)</span>malloc<span class="op">(</span><span class="kw">sizeof</span><span class="op">(</span>cl_device_id<span class="op">)</span> <span class="op">*</span> num_sub_devices<span class="op">);</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>err <span class="op">=</span> clCreateSubDevices<span class="op">(</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>    root_device<span class="op">,</span></span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>    properties<span class="op">,</span></span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>    num_sub_devices<span class="op">,</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>    sub_devices<span class="op">,</span></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>    NULL</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<h2 id="lifecycle-and-resource-management">Lifecycle and Resource
+Management</h2>
+<p>Each generated <code>cl_device_id</code> can be used to initialize
+distinct contexts or command queues, allowing workloads to be scheduled
+specifically to assigned CPU cores.</p>
+<p>Because sub-devices are reference-counted entities, each sub-device
+must be explicitly destroyed when no longer needed using
+<code>clReleaseDevice</code>:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> <span class="op">(</span>cl_uint i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span> i <span class="op">&lt;</span> num_sub_devices<span class="op">;</span> i<span class="op">++)</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    clReleaseDevice<span class="op">(</span>sub_devices<span class="op">[</span>i<span class="op">]);</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>free<span class="op">(</span>sub_devices<span class="op">);</span></span></code></pre></div>
+<p>Releasing the sub-devices ensures that driver resources and parent
+device locks are cleaned up properly without leaking memory.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

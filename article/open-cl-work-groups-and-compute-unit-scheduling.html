@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Work-Groups and Compute Unit Scheduling - opencl</title>
+    <meta name="description" content="This article provides an overview of OpenCL work-groups and their execution model on modern hardware. It explains the fundamental components that define a work-group—including work-items, shared memory, and synchronization primitives—and details how">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-work-groups-and-compute-unit-scheduling">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Work-Groups and Compute Unit Scheduling - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-work-groups-and-compute-unit-scheduling" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article provides an overview of OpenCL work-groups and their execution model on modern hardware. It explains the fundamental components that define a work-group—including work-items, shared memory, and synchronization primitives—and details how" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-work-groups-and-compute-unit-scheduling">OpenCL
+Work-Groups and Compute Unit Scheduling</h1>
+<p>This article provides an overview of OpenCL work-groups and their
+execution model on modern hardware. It explains the fundamental
+components that define a work-group—including work-items, shared memory,
+and synchronization primitives—and details how the OpenCL runtime and
+hardware schedulers assign and execute these groups across available
+compute units.</p>
+<h3 id="defining-an-opencl-work-group">Defining an OpenCL
+Work-Group</h3>
+<p>In OpenCL, a computation is organized into an N-Dimensional Range
+(NDRange) of discrete execution units called work-items. A
+<strong>work-group</strong> is a coarse-grained collection of these
+work-items that execute the same kernel program concurrently.
+Work-groups can be configured in one, two, or three dimensions,
+reflecting the spatial layout of the data being processed.</p>
+<p>A work-group is defined by three critical characteristics:</p>
+<ol type="1">
+<li><strong>Shared Local Memory:</strong> Work-items within the same
+work-group have access to a dedicated, low-latency memory space known as
+local memory (or shared memory in architectures like CUDA). Work-items
+from different work-groups cannot access each other's local memory.</li>
+<li><strong>Barrier Synchronization:</strong> OpenCL provides execution
+and memory barriers (such as <code>work_group_barrier</code>) that allow
+work-items within the same work-group to synchronize their execution
+flow. Synchronization between distinct work-groups is not natively
+supported within a single kernel launch.</li>
+<li><strong>Relative Indexing:</strong> Each work-item has a global ID
+representing its position within the entire NDRange, a local ID
+representing its coordinates inside its specific work-group, and a
+work-group ID identifying which group it belongs to.</li>
+</ol>
+<h3 id="how-work-groups-are-scheduled-across-compute-units">How
+Work-Groups Are Scheduled Across Compute Units</h3>
+<p>When a kernel is enqueued, the OpenCL runtime and underlying hardware
+scheduler break down the total execution space into work-groups and
+distribute them across the device's hardware Compute Units (CUs).</p>
+<h4 id="1-atomicity-of-work-group-assignment">1. Atomicity of Work-Group
+Assignment</h4>
+<p>A single work-group is strictly assigned to one Compute Unit. It
+cannot be subdivided across multiple CUs because the work-items within
+the group depend on the local memory and hardware synchronization
+barriers physically tied to that specific CU.</p>
+<h4 id="2-resource-allocation-and-occupancy">2. Resource Allocation and
+Occupancy</h4>
+<p>A Compute Unit can host one or more work-groups simultaneously,
+depending on resource availability. Before scheduling a work-group to a
+CU, the hardware verifies that sufficient resources exist,
+primarily:</p>
+<ul>
+<li><strong>Registers:</strong> The total register file space required
+by all work-items in the work-group.</li>
+<li><strong>Local Memory Allocation:</strong> The total amount of local
+memory requested by the kernel.</li>
+<li><strong>Hardware Contexts:</strong> The physical limit of tracking
+threads and groups on the CU.</li>
+</ul>
+<p>If a CU has sufficient resources, it will accept multiple work-groups
+to maximize hardware occupancy and hide memory latency. If resources are
+insufficient, the pending work-groups remain in a hardware or driver
+dispatch queue.</p>
+<h4 id="3-low-level-execution-sub-groups-wavefronts-and-warps">3.
+Low-Level Execution (Sub-Groups, Wavefronts, and Warps)</h4>
+<p>Once a work-group is resident on a CU, its work-items are further
+grouped into SIMD (Single Instruction, Multiple Data) execution batches,
+known in OpenCL as sub-groups (referred to as <em>wavefronts</em> on AMD
+architectures or <em>warps</em> on NVIDIA architectures). The CU's
+instruction scheduler selects ready sub-groups and dispatches their
+instructions across the physical vector arithmetic logic units
+(ALUs).</p>
+<h4 id="4-completion-and-dynamic-scheduling">4. Completion and Dynamic
+Scheduling</h4>
+<p>Work-groups are scheduled independently and can execute in any order.
+When all work-items of a work-group complete their execution, the CU
+releases the allocated local memory, registers, and tracking contexts.
+The hardware scheduler then immediately assigns the next available
+work-group from the queue to that CU until all work-groups within the
+NDRange are retired.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

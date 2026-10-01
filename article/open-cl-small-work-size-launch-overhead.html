@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Small Work Size Launch Overhead - opencl</title>
+    <meta name="description" content="Launching OpenCL kernels with small global work sizes introduces severe performance penalties where runtime overhead vastly exceeds actual computation time. When the number of work-items is insufficient to saturate the compute units of a modern accelerat">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-small-work-size-launch-overhead">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Small Work Size Launch Overhead - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-small-work-size-launch-overhead" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Launching OpenCL kernels with small global work sizes introduces severe performance penalties where runtime overhead vastly exceeds actual computation time. When the number of work-items is insufficient to saturate the compute units of a modern accelerat" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-small-work-size-launch-overhead">OpenCL Small Work Size
+Launch Overhead</h1>
+<p>Launching OpenCL kernels with small global work sizes introduces
+severe performance penalties where runtime overhead vastly exceeds
+actual computation time. When the number of work-items is insufficient
+to saturate the compute units of a modern accelerator like a GPU, fixed
+driver execution latency, command dispatch costs, and hardware
+underutilization combine to negate the parallel processing advantages of
+the platform. Understanding these bottlenecks is critical for optimizing
+execution pipelines and deciding when to batch workloads or execute code
+on the host CPU instead.</p>
+<h3 id="fixed-api-and-driver-launch-latency">Fixed API and Driver Launch
+Latency</h3>
+<p>Every <code>clEnqueueNDRangeKernel</code> call incurs a non-trivial
+amount of fixed host-side and driver-side overhead. This includes:</p>
+<ul>
+<li><strong>API Processing:</strong> Argument validation, state
+tracking, and building hardware command packets on the CPU.</li>
+<li><strong>Context Switching and Dispatch:</strong> Passing the command
+buffer from the user-space OpenCL runtime through the OS kernel driver
+to the device command queue.</li>
+<li><strong>Hardware Scheduling:</strong> The device-level command
+processor reading the packet and dispatching it to compute arrays.</li>
+</ul>
+<p>This sequence typically takes between 5 to 50 microseconds depending
+on the operating system, driver efficiency, and hardware platform. If a
+kernel with a small global work size completes its execution in less
+than a microsecond, the dispatch overhead constitutes over 95% of the
+total execution time, creating a severe CPU-bound bottleneck.</p>
+<h3 id="underutilization-of-compute-units">Underutilization of Compute
+Units</h3>
+<p>GPUs achieve high throughput by running tens of thousands of threads
+concurrently across multiple Compute Units (CUs).</p>
+<ul>
+<li><strong>Wavefront/Warp Inefficiency:</strong> GPUs group work-items
+into SIMD vectors (e.g., warps of 32 threads on NVIDIA, wavefronts of 32
+or 64 threads on AMD). If the global work size is smaller than the
+native vector size, or not an exact multiple, hardware execution lanes
+are masked off, wasting potential compute power.</li>
+<li><strong>Occupancy Loss:</strong> A modern GPU may contain dozens of
+CUs capable of executing multiple resident warps simultaneously to hide
+memory latency. A small global work size may only map to a fraction of a
+single CU, leaving the remainder of the device completely idle while
+still consuming active runtime resources.</li>
+</ul>
+<h3 id="inability-to-hide-memory-latency">Inability to Hide Memory
+Latency</h3>
+<p>Massively parallel architectures do not rely on large cache
+hierarchies to minimize memory access times; instead, they rely on
+zero-overhead thread scheduling to switch to active warps while others
+wait for memory requests. With a small global work size, there are not
+enough resident work-groups to hide global memory access latency.
+Consequently, the execution pipelines stall frequently, making
+memory-bound kernels significantly slower than equivalent
+implementations running on a multi-core CPU.</p>
+<h3 id="data-transfer-and-synchronization-imbalance">Data Transfer and
+Synchronization Imbalance</h3>
+<p>Small kernels frequently operate on small sets of data. When data
+must be moved across PCIe buses via <code>clEnqueueWriteBuffer</code>
+and read back using <code>clEnqueueReadBuffer</code>, the bus latency
+dominates the operation. Even on integrated GPUs with unified memory,
+cache flushes and synchronization barriers between the host and device
+incur costs that easily surpass the processing time of small
+workloads.</p>
+<h3 id="mitigation-strategies">Mitigation Strategies</h3>
+<p>To eliminate the performance penalty of small kernel dispatches,
+consider the following approaches:</p>
+<ol type="1">
+<li><strong>Kernel Fusion:</strong> Combine multiple small kernels
+operating sequentially on related data into a single, larger kernel to
+amortize launch costs.</li>
+<li><strong>Batching and Aggregation:</strong> Queue work until a
+sufficiently large dataset is accumulated, allowing you to launch an
+NDRange with thousands of work-items instead of dozens.</li>
+<li><strong>Host Execution:</strong> Fall back to the CPU using standard
+multi-threading (e.g., OpenMP or C++ threads) for operations with small
+datasets where device dispatch latency outweighs parallel compute
+gains.</li>
+<li><strong>Persistent Kernels:</strong> Launch a long-running kernel
+with enough threads to fully saturate the GPU, utilizing lock-free
+queues in device memory to feed small tasks directly to the running
+work-items without re-invoking the host dispatch mechanism.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

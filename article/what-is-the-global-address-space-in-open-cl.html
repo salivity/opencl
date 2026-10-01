@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What Is the __global Address Space in OpenCL? - opencl</title>
+    <meta name="description" content="The global address space qualifier in OpenCL designates that a memory object or pointer resides within the device’s global memory pool. This article provides a focused explanation of the global qualifier, detailing its fundamental purpose in OpenCL ker">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/what-is-the-global-address-space-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="What Is the __global Address Space in OpenCL? - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/what-is-the-global-address-space-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The global address space qualifier in OpenCL designates that a memory object or pointer resides within the device’s global memory pool. This article provides a focused explanation of the global qualifier, detailing its fundamental purpose in OpenCL ker" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="what-is-the-__global-address-space-in-opencl">What Is the
+__global Address Space in OpenCL?</h1>
+<p>The <code>__global</code> address space qualifier in OpenCL
+designates that a memory object or pointer resides within the device’s
+global memory pool. This article provides a focused explanation of the
+<code>__global</code> qualifier, detailing its fundamental purpose in
+OpenCL kernel code, how it facilitates data exchange between the host
+and device, its visibility across computing units, and its architectural
+performance implications.</p>
+<h3 id="primary-purpose-of-the-__global-qualifier">Primary Purpose of
+the <code>__global</code> Qualifier</h3>
+<p>OpenCL uses explicit memory qualifiers to map data directly to the
+underlying hardware hierarchy of a compute device (such as a GPU or
+multi-core CPU). The <code>__global</code> qualifier (or simply
+<code>global</code>) specifies that an allocated buffer resides in the
+main memory of the device.</p>
+<p>The primary functions of the <code>__global</code> qualifier
+include:</p>
+<ul>
+<li><strong>Host-to-Device Data Sharing:</strong> Devices execute
+kernels on data supplied by the host application. Memory allocated via
+the OpenCL runtime on the host (e.g., using <code>clCreateBuffer</code>)
+lives in global memory. The <code>__global</code> keyword informs the
+compiler that a kernel argument points to these host-accessible memory
+allocations.</li>
+<li><strong>Universal Work-Item Visibility:</strong> Global memory is
+visible to all work-items across all work-groups executing the kernel.
+Any work-item can read from or write to any location in a global buffer,
+provided the buffer permissions allow it.</li>
+<li><strong>Persistent Execution State:</strong> Unlike private or local
+memory, which are allocated dynamically per thread or per work-group and
+cleared once execution completes, global memory persists across the
+execution of multiple consecutive kernels until explicitly released by
+the host.</li>
+</ul>
+<h3 id="syntax-and-kernel-arguments">Syntax and Kernel Arguments</h3>
+<p>Pointers passed as arguments to an OpenCL kernel must explicitly
+declare their address space. Because most input arrays and output
+buffers reside in the device's primary VRAM, <code>__global</code> is
+the most commonly used qualifier in kernel signatures.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> vector_add<span class="op">(</span>__global <span class="dt">const</span> <span class="dt">float</span> <span class="op">*</span>a<span class="op">,</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>                         __global <span class="dt">const</span> <span class="dt">float</span> <span class="op">*</span>b<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>                         __global <span class="dt">float</span> <span class="op">*</span>result<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> id <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    result<span class="op">[</span>id<span class="op">]</span> <span class="op">=</span> a<span class="op">[</span>id<span class="op">]</span> <span class="op">+</span> b<span class="op">[</span>id<span class="op">];</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>In the example above, <code>__global</code> tells the compiler that
+the pointers <code>a</code>, <code>b</code>, and <code>result</code>
+reference the high-capacity, off-chip global memory space rather than
+high-speed local scratchpad registers.</p>
+<h3 id="performance-and-synchronization-considerations">Performance and
+Synchronization Considerations</h3>
+<p>While <code>__global</code> memory provides the largest storage
+capacity on a compute device, it also has the highest access latency
+compared to <code>__local</code> (shared) or <code>__private</code>
+(register) memory. When using <code>__global</code>:</p>
+<ul>
+<li><strong>Memory Coalescing:</strong> For peak bandwidth, work-items
+within the same subgroup or warp should access consecutive memory
+locations in <code>__global</code> space. Non-contiguous or random
+access patterns significantly degrade memory throughput.</li>
+<li><strong>Caching:</strong> Depending on the hardware architecture,
+accesses to <code>__global</code> memory may pass through L1 and L2
+hardware caches to mitigate latency.</li>
+<li><strong>Concurrency and Race Conditions:</strong> Because all
+work-items can access global memory simultaneously, concurrent writes to
+the same address result in race conditions. Developers must use atomic
+operations (such as <code>atomic_add</code>) or memory fences
+(<code>CLK_GLOBAL_MEM_FENCE</code>) to ensure proper synchronization
+across work-items.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

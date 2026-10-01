@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coarse-Grained vs Fine-Grained SVM in OpenCL - opencl</title>
+    <meta name="description" content="Shared Virtual Memory (SVM) in OpenCL allows the host (CPU) and device (such as a GPU) to share a single, unified virtual address space, eliminating the need to manually copy pointer-rich data structures back and forth. The primary difference between coa">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/coarse-grained-vs-fine-grained-svm-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Coarse-Grained vs Fine-Grained SVM in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/coarse-grained-vs-fine-grained-svm-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Shared Virtual Memory (SVM) in OpenCL allows the host (CPU) and device (such as a GPU) to share a single, unified virtual address space, eliminating the need to manually copy pointer-rich data structures back and forth. The primary difference between coa" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="coarse-grained-vs-fine-grained-svm-in-opencl">Coarse-Grained vs
+Fine-Grained SVM in OpenCL</h1>
+<p>Shared Virtual Memory (SVM) in OpenCL allows the host (CPU) and
+device (such as a GPU) to share a single, unified virtual address space,
+eliminating the need to manually copy pointer-rich data structures back
+and forth. The primary difference between coarse-grained and
+fine-grained SVM lies in the level of synchronization, memory coherency,
+and access granularity supported by the hardware and the runtime. While
+coarse-grained SVM requires explicit synchronization at the buffer
+level, fine-grained SVM allows concurrent, byte-level access and updates
+between the host and device.</p>
+<h3 id="coarse-grained-svm">Coarse-Grained SVM</h3>
+<p>Coarse-grained SVM operates at the buffer boundary level. In this
+model, the host and device can share virtual addresses, meaning complex
+data structures like linked lists or trees can be traversed directly
+using pointers without serializing the data. However, concurrent access
+to the same memory region is strictly prohibited during kernel
+execution.</p>
+<p>Key characteristics include:</p>
+<ul>
+<li><strong>Explicit Synchronization:</strong> Developers must use
+explicit map and unmap commands (such as <code>clEnqueueSVMMap</code>
+and <code>clEnqueueSVMUnmap</code>) to transfer ownership of the memory
+region between the host and the OpenCL device.</li>
+<li><strong>Buffer-Level Granularity:</strong> Updates are only
+synchronized at the boundaries of the mapped regions when unmapped,
+rather than dynamically as writes occur.</li>
+<li><strong>Hardware Support:</strong> It has minimal hardware
+requirements and is supported on virtually all OpenCL 2.0+ compliant
+devices, as it does not rely on hardware-level cache coherency between
+the host CPU and the compute device.</li>
+</ul>
+<h3 id="fine-grained-svm">Fine-Grained SVM</h3>
+<p>Fine-grained SVM provides a much closer integration between the host
+and device memory systems by enabling byte-level or variable-level
+memory sharing. This allows both the host CPU and the OpenCL device to
+read and write to the same virtual memory buffer simultaneously without
+requiring explicit map and unmap operations.</p>
+<p>Key characteristics include:</p>
+<ul>
+<li><strong>Implicit Synchronization:</strong> Individual memory updates
+can be visible across both the host and device without mapping
+operations. Memory consistency is maintained either through standard
+memory consistency protocols or OpenCL 2.0 atomic operations.</li>
+<li><strong>Concurrent Access:</strong> The host and the device can read
+and modify overlapping memory regions concurrently during
+execution.</li>
+<li><strong>Hardware Requirements:</strong> It requires more advanced
+hardware support, specifically cache coherency between the host
+processor and the OpenCL device caches.</li>
+</ul>
+<h3 id="key-differences-summary">Key Differences Summary</h3>
+<ul>
+<li><strong>Access Synchronization:</strong> Coarse-grained requires
+explicit map/unmap API calls to establish memory consistency.
+Fine-grained handles consistency implicitly or via atomic
+operations.</li>
+<li><strong>Concurrency:</strong> Coarse-grained forbids concurrent
+access to the same buffer by host and device. Fine-grained allows
+concurrent access down to individual bytes or memory words.</li>
+<li><strong>Performance Trade-offs:</strong> Coarse-grained has lower
+hardware overhead and predictable transfer boundaries, making it ideal
+for bulk transfers. Fine-grained enables lower latency and simplified
+code for dynamic workloads and interactive pointer chasing, but it
+relies heavily on cache-coherent interconnects.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Native Math vs Common Math Accuracy - opencl</title>
+    <meta name="description" content="In OpenCL development, developers must frequently choose between standard math functions and native math functions to balance numerical precision with execution speed. While standard OpenCL math functions strictly conform to the OpenCL specification's Un">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-native-math-vs-common-math-accuracy">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Native Math vs Common Math Accuracy - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-native-math-vs-common-math-accuracy" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL development, developers must frequently choose between standard math functions and native math functions to balance numerical precision with execution speed. While standard OpenCL math functions strictly conform to the OpenCL specification's Un" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-native-math-vs-common-math-accuracy">OpenCL Native Math
+vs Common Math Accuracy</h1>
+<p>In OpenCL development, developers must frequently choose between
+standard math functions and native math functions to balance numerical
+precision with execution speed. While standard OpenCL math functions
+strictly conform to the OpenCL specification's Unit in the Last Place
+(ULP) error limits and handle edge cases reliably, native math functions
+map directly to device-specific hardware instructions, trading
+mathematical accuracy for maximum throughput.</p>
+<h3 id="accuracy-standards-of-common-math-functions">Accuracy Standards
+of Common Math Functions</h3>
+<p>The standard math functions in OpenCL (such as <code>sin</code>,
+<code>cos</code>, <code>exp</code>, and <code>sqrt</code>) are designed
+for numerical reliability and cross-platform consistency. The OpenCL
+specification defines strict maximum error tolerances for these
+functions using ULP metrics:</p>
+<ul>
+<li><strong>Defined Bounds:</strong> For single-precision
+floating-point, common transcendental functions generally have an error
+bound between 2 to 4 ULP. For example, standard single-precision
+<code>sin</code> and <code>cos</code> must maintain an error of less
+than or equal to 4 ULP across the entire input domain.</li>
+<li><strong>IEEE 754 Compliance:</strong> Common functions strictly
+manage special floating-point values. They handle subnormal numbers,
+signed zeros, infinities, and NaNs (Not-a-Number) predictably.</li>
+<li><strong>Input Reduction:</strong> Standard functions use robust
+software-based range reduction to preserve precision when handling very
+large or very small input values.</li>
+</ul>
+<h3 id="accuracy-characteristics-of-native-math-functions">Accuracy
+Characteristics of Native Math Functions</h3>
+<p>The native math library consists of functions prefixed with
+<code>native_</code> (such as <code>native_sin</code>,
+<code>native_cos</code>, and <code>native_exp</code>). These functions
+bypass standard software algorithms and execute directly on the GPU's
+Special Function Units (SFUs) or hardware-equivalent circuitry.</p>
+<ul>
+<li><strong>Implementation-Defined Precision:</strong> The OpenCL
+specification does not mandate strict ULP error bounds for native
+functions. The numerical accuracy is entirely dependent on the hardware
+vendor (NVIDIA, AMD, Intel, or ARM).</li>
+<li><strong>Significant ULP Variance:</strong> Errors in native
+operations can range from a few ULP to thousands of ULP, particularly as
+input values grow further away from zero.</li>
+<li><strong>Limited Edge Case Support:</strong> Native functions often
+flush subnormal numbers to zero, fail to distinguish between positive
+and negative zero, and may generate non-standard results or NaNs when
+approaching mathematical asymptotes.</li>
+<li><strong>Minimal Range Reduction:</strong> Native instructions rarely
+implement complex range reduction, resulting in rapid degradation of
+accuracy for periodic functions outside the <span
+class="math inline">\([-\pi, \pi]\)</span> interval.</li>
+</ul>
+<h3 id="choosing-between-standard-and-native-functions">Choosing Between
+Standard and Native Functions</h3>
+<p>Selecting the appropriate library depends on the requirements of the
+computing workload:</p>
+<ul>
+<li><strong>Use Common Functions</strong> when developing scientific
+simulations, financial models, linear algebra solvers, or multi-platform
+applications where numerical determinism and IEEE compliance are
+essential.</li>
+<li><strong>Use Native Functions</strong> for real-time graphics, image
+processing, signal filtering, computer vision, or machine learning
+inference, where small precision variations are imperceptible and peak
+hardware throughput is required.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

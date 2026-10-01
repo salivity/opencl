@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapping OpenCL Work-Items to GPU Threads - opencl</title>
+    <meta name="description" content="This article explains how OpenCL's abstract execution model translates directly to the physical silicon of modern Graphics Processing Units (GPUs). It breaks down the hierarchy of OpenCL work-items, sub-groups, and work-groups, detailing how they align w">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/mapping-open-cl-work-items-to-gpu-threads">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Mapping OpenCL Work-Items to GPU Threads - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/mapping-open-cl-work-items-to-gpu-threads" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explains how OpenCL's abstract execution model translates directly to the physical silicon of modern Graphics Processing Units (GPUs). It breaks down the hierarchy of OpenCL work-items, sub-groups, and work-groups, detailing how they align w" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="mapping-opencl-work-items-to-gpu-threads">Mapping OpenCL
+Work-Items to GPU Threads</h1>
+<p>This article explains how OpenCL's abstract execution model
+translates directly to the physical silicon of modern Graphics
+Processing Units (GPUs). It breaks down the hierarchy of OpenCL
+work-items, sub-groups, and work-groups, detailing how they align with
+physical hardware components such as SIMD lanes, warps or wavefronts,
+and compute units across major GPU architectures.</p>
+<hr />
+<h3 id="the-opencl-hierarchy-vs-gpu-hardware">The OpenCL Hierarchy vs.
+GPU Hardware</h3>
+<p>OpenCL uses an abstract execution hierarchy designed to scale across
+different types of processors. Modern GPUs execute these abstractions
+using massively parallel Single Instruction, Multiple Data (SIMD) or
+Single Instruction, Multiple Threads (SIMT) architectures.</p>
+<p>The structural relationship maps as follows:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">OpenCL Software Concept</th>
+<th style="text-align: left;">Hardware Concept (Generic)</th>
+<th style="text-align: left;">NVIDIA Equivalent</th>
+<th style="text-align: left;">AMD Equivalent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Work-Item</strong></td>
+<td style="text-align: left;">SIMD Lane / Core</td>
+<td style="text-align: left;">CUDA Core / Thread</td>
+<td style="text-align: left;">Stream Core / Lane</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Sub-Group</strong> (Extension/Core
+in 2.1+)</td>
+<td style="text-align: left;">Hardware Thread Group</td>
+<td style="text-align: left;">Warp (32 threads)</td>
+<td style="text-align: left;">Wavefront (32 or 64 threads)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Work-Group</strong></td>
+<td style="text-align: left;">Compute Unit (CU) Core Cluster</td>
+<td style="text-align: left;">Streaming Multiprocessor (SM)</td>
+<td style="text-align: left;">Compute Unit / Dual CU</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>NDRange</strong></td>
+<td style="text-align: left;">Entire GPU Device</td>
+<td style="text-align: left;">Entire GPU Device</td>
+<td style="text-align: left;">Entire GPU Device</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="1-work-item-to-physical-simd-lane">1. Work-Item to Physical SIMD
+Lane</h3>
+<p>A work-item represents a single invocation of a kernel. Physically, a
+work-item does not correspond to an independent CPU-like core with its
+own instruction fetch, decode, and control units. Instead, it
+corresponds to a single <strong>SIMD lane</strong> (an Arithmetic Logic
+Unit, or ALU) executing within a broader vector processing unit.</p>
+<p>Each work-item maintains its own private state, which the hardware
+allocates out of a shared physical register file.</p>
+<hr />
+<h3 id="2-lockstep-execution-warps-and-wavefronts">2. Lockstep
+Execution: Warps and Wavefronts</h3>
+<p>GPUs do not schedule individual work-items. Instead, the hardware
+bundles a fixed number of adjacent work-items into lockstep execution
+groups:</p>
+<ul>
+<li><strong>NVIDIA</strong> bundles 32 work-items into a
+<strong>Warp</strong>.</li>
+<li><strong>AMD</strong> bundles 32 or 64 work-items into a
+<strong>Wavefront</strong>.</li>
+</ul>
+<p>All work-items in a warp or wavefront share a single instruction
+pointer and execute the exact same instruction simultaneously across
+parallel SIMD lanes.</p>
+<ul>
+<li><strong>Branch Divergence:</strong> If work-items within the same
+hardware group diverge at a conditional branch (<code>if/else</code>),
+the physical unit must execute each branch path sequentially, masking
+out (disabling) the lanes that do not participate in that path. This
+reduces overall hardware throughput.</li>
+</ul>
+<hr />
+<h3 id="3-work-group-to-compute-unit-smcu">3. Work-Group to Compute Unit
+(SM/CU)</h3>
+<p>An OpenCL <strong>work-group</strong> consists of multiple work-items
+that can synchronize execution using barriers and share high-speed data.
+Modern GPU hardware maps an entire work-group to a single physical
+<strong>Compute Unit</strong> (AMD) or <strong>Streaming
+Multiprocessor</strong> (NVIDIA).</p>
+<ul>
+<li><strong>Atomicity of Allocation:</strong> A work-group cannot be
+split across multiple physical compute units. All warps/wavefronts that
+comprise that work-group must execute on the same compute unit to
+guarantee synchronization and memory consistency.</li>
+<li><strong>Shared/Local Memory:</strong> OpenCL <code>__local</code>
+memory physically resides in on-chip SRAM located directly inside the
+compute unit (known as Shared Memory on NVIDIA, Local Data Share on
+AMD). Because local memory is physically tied to the compute unit,
+work-items within the work-group access this memory with extremely low
+latency.</li>
+<li><strong>Occupancy:</strong> A single physical compute unit can host
+multiple work-groups concurrently, provided it has enough physical
+registers, shared memory, and scheduling slots available.</li>
+</ul>
+<hr />
+<h3 id="4-ndrange-and-hardware-schedulers">4. NDRange and Hardware
+Schedulers</h3>
+<p>The global collection of all work-items is the
+<strong>NDRange</strong>. When a kernel is enqueued:</p>
+<ol type="1">
+<li>The GPU’s global hardware scheduler receives the complete grid of
+work-groups.</li>
+<li>The scheduler distributes work-groups across available Compute Units
+/ SMs until all physical capacity is occupied.</li>
+<li>As work-groups complete their execution, the global scheduler
+assigns new work-groups to the newly freed compute units until the
+NDRange is fully executed.</li>
+</ol>
+<hr />
+<h3 id="latency-hiding-in-hardware">Latency Hiding in Hardware</h3>
+<p>Because modern GPUs have thousands of physical registers per compute
+unit, switching between warps or wavefronts incurs zero cycle overhead.
+When one set of work-items stalls on a high-latency operation (such as
+loading data from off-chip global VRAM), the on-chip warp/wavefront
+scheduler instantly switches the physical execution lanes to another
+group of work-items that is ready to compute. This mechanism, known as
+latency hiding, ensures physical hardware execution units maintain
+maximum utilization.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

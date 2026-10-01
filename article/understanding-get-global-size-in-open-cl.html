@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Understanding get_global_size in OpenCL - opencl</title>
+    <meta name="description" content="In OpenCL, the getglobalsize built-in function informs a running kernel of the total number of work-items allocated across the entire execution space along a specified dimension. By providing the kernel with the global dimensions of the NDRange (N-Dimens">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/understanding-get-global-size-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Understanding get_global_size in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/understanding-get-global-size-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, the getglobalsize built-in function informs a running kernel of the total number of work-items allocated across the entire execution space along a specified dimension. By providing the kernel with the global dimensions of the NDRange (N-Dimens" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="understanding-get_global_size-in-opencl">Understanding
+get_global_size in OpenCL</h1>
+<p>In OpenCL, the <code>get_global_size</code> built-in function informs
+a running kernel of the total number of work-items allocated across the
+entire execution space along a specified dimension. By providing the
+kernel with the global dimensions of the NDRange (N-Dimensional Range),
+it enables each parallel instance to determine boundaries, compute
+global data offsets, and safely map compute threads to data
+elements.</p>
+<h3 id="the-ndrange-and-execution-dimensions">The NDRange and Execution
+Dimensions</h3>
+<p>When a host application enqueues an OpenCL kernel using
+<code>clEnqueueNDRangeKernel</code>, it defines the overall problem
+space as an NDRange of 1, 2, or 3 dimensions. Each point within this
+space is executed as an individual work-item.</p>
+<p>The <code>get_global_size</code> function provides direct access to
+the size of this domain from within the kernel:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> get_global_size<span class="op">(</span>uint dimindx<span class="op">);</span></span></code></pre></div>
+<p>The parameter <code>dimindx</code> specifies the dimension index:</p>
+<ul>
+<li><code>0</code> queries the size along the X-dimension.</li>
+<li><code>1</code> queries the size along the Y-dimension.</li>
+<li><code>2</code> queries the size along the Z-dimension.</li>
+</ul>
+<p>The function returns the total number of global work-items configured
+for that specific axis.</p>
+<h3 id="mapping-data-and-linear-indexing">Mapping Data and Linear
+Indexing</h3>
+<p>Parallel programs frequently map multi-dimensional execution grids to
+flat, linear memory buffers. While <code>get_global_id</code> identifies
+the current work-item's location along a specific axis,
+<code>get_global_size</code> provides the width or depth required to
+calculate memory strides.</p>
+<p>For example, when processing a 2D image mapped to a 1D buffer, the
+linear index is computed as:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> x <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> y <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">1</span><span class="op">);</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> width <span class="op">=</span> get_global_size<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> global_index <span class="op">=</span> y <span class="op">*</span> width <span class="op">+</span> x<span class="op">;</span></span></code></pre></div>
+<p>Here, <code>get_global_size(0)</code> informs the kernel of the row
+pitch, ensuring each work-item accesses the correct memory address.</p>
+<h3 id="boundary-checking-and-data-protection">Boundary Checking and
+Data Protection</h3>
+<p>Host programs often pad global NDRange sizes to multiples of the
+local work-group size to optimize hardware utilization. When this
+happens, the total number of launched work-items can exceed the actual
+data size.</p>
+<p>Kernels use <code>get_global_size</code>—or values passed relative to
+it—to ensure work-items do not access memory beyond allocated buffer
+limits:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> process_data<span class="op">(</span>__global <span class="dt">float</span><span class="op">*</span> data<span class="op">,</span> uint actual_data_length<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> id <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Guard against out-of-bounds access</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>id <span class="op">&lt;</span> actual_data_length<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>        data<span class="op">[</span>id<span class="op">]</span> <span class="op">*=</span> <span class="fl">2.0</span><span class="bu">f</span><span class="op">;</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="supporting-grid-stride-loops">Supporting Grid-Stride Loops</h3>
+<p>When the dataset is larger than the maximum number of concurrent
+work-items supported by the hardware, developers use grid-stride loops.
+Instead of launching one work-item per data element, a fixed grid is
+launched where each work-item iterates through the data in steps equal
+to the total execution size:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> stride_kernel<span class="op">(</span>__global <span class="dt">float</span><span class="op">*</span> data<span class="op">,</span> uint n<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> global_id <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> total_workers <span class="op">=</span> get_global_size<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">(</span><span class="dt">size_t</span> i <span class="op">=</span> global_id<span class="op">;</span> i <span class="op">&lt;</span> n<span class="op">;</span> i <span class="op">+=</span> total_workers<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>        data<span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> data<span class="op">[</span>i<span class="op">]</span> <span class="op">+</span> <span class="fl">1.0</span><span class="bu">f</span><span class="op">;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>In this pattern, <code>get_global_size</code> informs the kernel of
+the total stride length, allowing the execution domain to cleanly sweep
+across arbitrary data sizes regardless of hardware limitations.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

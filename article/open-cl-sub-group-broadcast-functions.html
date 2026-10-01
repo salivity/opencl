@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Sub-Group Broadcast Functions - opencl</title>
+    <meta name="description" content="Sub-group operations in modern OpenCL standards allow work-items within the same hardware execution unit (such as a wavefront or warp) to communicate directly without using local memory or synchronization barriers. In OpenCL 2.1 and OpenCL 3.0, the prima">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-sub-group-broadcast-functions">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Sub-Group Broadcast Functions - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-sub-group-broadcast-functions" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Sub-group operations in modern OpenCL standards allow work-items within the same hardware execution unit (such as a wavefront or warp) to communicate directly without using local memory or synchronization barriers. In OpenCL 2.1 and OpenCL 3.0, the prima" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-sub-group-broadcast-functions">OpenCL Sub-Group Broadcast
+Functions</h1>
+<p>Sub-group operations in modern OpenCL standards allow work-items
+within the same hardware execution unit (such as a wavefront or warp) to
+communicate directly without using local memory or synchronization
+barriers. In OpenCL 2.1 and OpenCL 3.0, the primary built-in function
+designed specifically for sharing data across an entire sub-group from a
+single work-item is <code>sub_group_broadcast</code>. This article
+details the syntax, behavior, and supported extensions for broadcasting
+data across sub-groups in recent OpenCL versions.</p>
+<h3 id="the-sub_group_broadcast-built-in-function">The
+<code>sub_group_broadcast</code> Built-In Function</h3>
+<p>The dedicated function for broadcasting values across a sub-group is
+<code>sub_group_broadcast</code>. It reads a value from a designated
+work-item within the sub-group and shares it with all other work-items
+in that same sub-group.</p>
+<p>The function signature follows this general pattern:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>T sub_group_broadcast<span class="op">(</span>T x<span class="op">,</span> uint sub_group_local_id<span class="op">);</span></span></code></pre></div>
+<ul>
+<li><strong><code>x</code></strong>: The value to be broadcast. While
+every work-item supplies an argument to <code>x</code>, only the value
+from the work-item whose local ID matches
+<code>sub_group_local_id</code> is used.</li>
+<li><strong><code>sub_group_local_id</code></strong>: The index (ranging
+from <code>0</code> to <code>get_sub_group_size() - 1</code>) of the
+work-item within the sub-group that provides the value. This value must
+be identical for all work-items executing the operation within the
+sub-group (a uniform value).</li>
+<li><strong>Return Value</strong>: The value of <code>x</code>
+originating from the specified work-item.</li>
+</ul>
+<h3 id="supported-data-types">Supported Data Types</h3>
+<p>In core OpenCL 2.1 and OpenCL 3.0 (with the
+<code>__opencl_c_subgroups</code> feature macro enabled),
+<code>sub_group_broadcast</code> natively supports standard 32-bit
+scalar data types:</p>
+<ul>
+<li>32-bit signed and unsigned integers (<code>int</code>,
+<code>uint</code>)</li>
+<li>Single-precision floating-point numbers (<code>float</code>)</li>
+<li>Pointer types (<code>void*</code>, generic pointers)</li>
+</ul>
+<p>Support for broader data types is made available through official
+OpenCL extensions:</p>
+<ul>
+<li><strong><code>cl_khr_subgroup_extended_types</code></strong>: Adds
+support for 8-bit integers (<code>char</code>, <code>uchar</code>),
+16-bit integers (<code>short</code>, <code>ushort</code>), 64-bit
+integers (<code>long</code>, <code>ulong</code>), and vector variations
+(such as <code>float4</code>, <code>int2</code>).</li>
+<li><strong><code>cl_khr_fp16</code></strong>: Enables broadcasting for
+half-precision floating-point types (<code>half</code>).</li>
+<li><strong><code>cl_khr_fp64</code></strong>: Enables broadcasting for
+double-precision floating-point types (<code>double</code>).</li>
+</ul>
+<h3 id="related-shuffle-functions-as-flexible-broadcasts">Related
+Shuffle Functions as Flexible Broadcasts</h3>
+<p>While <code>sub_group_broadcast</code> requires a uniform origin
+across all work-items, the <code>cl_khr_subgroup_shuffle</code> and
+<code>cl_khr_subgroup_shuffle_relative</code> extensions provide dynamic
+broadcast mechanisms:</p>
+<ul>
+<li><strong><code>sub_group_shuffle(T x, uint current_id)</code></strong>:
+Allows arbitrary permutations of data. If all work-items pass the same
+<code>current_id</code>, it behaves identically to a broadcast, but it
+also allows different work-items to pull from different IDs
+simultaneously.</li>
+<li><strong><code>sub_group_shuffle_down(T current, T next, uint delta)</code></strong>
+and
+<strong><code>sub_group_shuffle_up(T previous, T current, uint delta)</code></strong>:
+Allow relative lane transfers, functioning as specialized relative
+broadcasts across subsets of a sub-group.</li>
+</ul>
+<h3 id="availability-and-version-requirements">Availability and Version
+Requirements</h3>
+<p>The <code>sub_group_broadcast</code> function was initially defined
+in the <code>cl_khr_subgroups</code> extension before being integrated
+into the core OpenCL 2.1 standard. In OpenCL 3.0, sub-group support
+became optional; devices indicate support through the
+<code>CL_DEVICE_SUB_GROUP_INDEPENDENT_FORWARD_PROGRESS</code> property
+and OpenCL C compiler macros (<code>__opencl_c_subgroups</code>). Ensure
+your target device supports either OpenCL 2.1+, the
+<code>__opencl_c_subgroups</code> feature, or the
+<code>cl_khr_subgroups</code> extension prior to deploying sub-group
+broadcast operations.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inspect OpenCL Build Logs Using clGetProgramBuildInfo - opencl</title>
+    <meta name="description" content="When compiling OpenCL kernels at runtime using clBuildProgram, syntax errors and hardware-incompatible code cause the build to fail silently without outputting diagnostics to standard streams. This article demonstrates how to intercept compilation errors">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/inspect-open-cl-build-logs-using-cl-get-program-build-info">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Inspect OpenCL Build Logs Using clGetProgramBuildInfo - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/inspect-open-cl-build-logs-using-cl-get-program-build-info" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="When compiling OpenCL kernels at runtime using clBuildProgram, syntax errors and hardware-incompatible code cause the build to fail silently without outputting diagnostics to standard streams. This article demonstrates how to intercept compilation errors" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="inspect-opencl-build-logs-using-clgetprogrambuildinfo">Inspect
+OpenCL Build Logs Using clGetProgramBuildInfo</h1>
+<p>When compiling OpenCL kernels at runtime using
+<code>clBuildProgram</code>, syntax errors and hardware-incompatible
+code cause the build to fail silently without outputting diagnostics to
+standard streams. This article demonstrates how to intercept compilation
+errors by querying the OpenCL runtime with
+<code>clGetProgramBuildInfo</code>. By following a two-step query
+pattern, developers can dynamically allocate the necessary buffer,
+extract the compiler's diagnostic output, and print detailed error logs
+directly to the console.</p>
+<h3 id="checking-for-build-errors">Checking for Build Errors</h3>
+<p>When <code>clBuildProgram</code> fails, it returns an error code—most
+commonly <code>CL_BUILD_PROGRAM_FAILURE</code>. Instead of terminating
+immediately, you should capture this return code and initiate a query
+against the program and target device to fetch the diagnostic log.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_int err <span class="op">=</span> clBuildProgram<span class="op">(</span>program<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> <span class="op">&amp;</span>device_id<span class="op">,</span> options<span class="op">,</span> NULL<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>err <span class="op">!=</span> CL_SUCCESS<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Proceed to retrieve the build log</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="retrieving-the-build-log">Retrieving the Build Log</h3>
+<p>Extracting the log with <code>clGetProgramBuildInfo</code> requires
+two calls: the first determines the log size in bytes, and the second
+copies the log data into an allocated character buffer.</p>
+<h4 id="1-query-the-log-size">1. Query the Log Size</h4>
+<p>Call <code>clGetProgramBuildInfo</code> with
+<code>CL_PROGRAM_BUILD_LOG</code> as the <code>param_name</code>. Pass
+<code>NULL</code> for the <code>param_value</code> parameter and provide
+a pointer to a <code>size_t</code> variable to receive the size of the
+log.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> log_size <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>clGetProgramBuildInfo<span class="op">(</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    program<span class="op">,</span> </span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    device_id<span class="op">,</span> </span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    CL_PROGRAM_BUILD_LOG<span class="op">,</span> </span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span><span class="op">,</span> </span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    NULL<span class="op">,</span> </span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span>log_size</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<h4 id="2-allocate-buffer-and-fetch-the-log">2. Allocate Buffer and
+Fetch the Log</h4>
+<p>Allocate a buffer of size <code>log_size</code>. Then, invoke
+<code>clGetProgramBuildInfo</code> again, passing the allocated buffer
+to <code>param_value</code> and <code>log_size</code> to
+<code>param_value_size</code>.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">char</span> <span class="op">*</span>build_log <span class="op">=</span> <span class="op">(</span><span class="dt">char</span> <span class="op">*)</span>malloc<span class="op">(</span>log_size<span class="op">);</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>clGetProgramBuildInfo<span class="op">(</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    program<span class="op">,</span> </span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    device_id<span class="op">,</span> </span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    CL_PROGRAM_BUILD_LOG<span class="op">,</span> </span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    log_size<span class="op">,</span> </span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    build_log<span class="op">,</span> </span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    NULL</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<h3 id="complete-implementation-example">Complete Implementation
+Example</h3>
+<p>Below is a self-contained helper function that prints the compilation
+log whenever <code>clBuildProgram</code> encounters an error:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&lt;CL/cl.h&gt;</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&lt;stdio.h&gt;</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&lt;stdlib.h&gt;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span> check_and_print_build_log<span class="op">(</span>cl_program program<span class="op">,</span> cl_device_id device<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> log_size <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">// First query: Retrieve buffer size needed for the log</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    clGetProgramBuildInfo<span class="op">(</span>program<span class="op">,</span> device<span class="op">,</span> CL_PROGRAM_BUILD_LOG<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> NULL<span class="op">,</span> <span class="op">&amp;</span>log_size<span class="op">);</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>log_size <span class="op">&gt;</span> <span class="dv">1</span><span class="op">)</span> <span class="op">{</span> <span class="co">// A log size of 1 usually means an empty null-terminated string</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>        <span class="dt">char</span> <span class="op">*</span>log <span class="op">=</span> <span class="op">(</span><span class="dt">char</span> <span class="op">*)</span>malloc<span class="op">(</span>log_size<span class="op">);</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="op">(</span>log <span class="op">!=</span> NULL<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>            <span class="co">// Second query: Populate the buffer with the compiler output</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>            clGetProgramBuildInfo<span class="op">(</span>program<span class="op">,</span> device<span class="op">,</span> CL_PROGRAM_BUILD_LOG<span class="op">,</span> log_size<span class="op">,</span> log<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>            fprintf<span class="op">(</span>stderr<span class="op">,</span> <span class="st">&quot;=== OpenCL Build Log ===</span><span class="sc">\n%s\n</span><span class="st">&quot;</span><span class="op">,</span> log<span class="op">);</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>            free<span class="op">(</span>log<span class="op">);</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="key-considerations">Key Considerations</h3>
+<ul>
+<li><strong>Multi-Device Contexts:</strong> If your OpenCL context
+targets multiple devices, <code>clBuildProgram</code> compiles code for
+each device independently. You must loop over each
+<code>cl_device_id</code> and call <code>clGetProgramBuildInfo</code>
+separately to identify which specific device failed and view its
+respective log.</li>
+<li><strong>Non-Fatal Warnings:</strong> Even if
+<code>clBuildProgram</code> returns <code>CL_SUCCESS</code>, the build
+log may still contain compiler warnings or optimization notes. You can
+execute this query pattern after successful builds to diagnose potential
+performance bottlenecks.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

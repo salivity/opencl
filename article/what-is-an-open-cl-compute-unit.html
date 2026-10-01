@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What Is an OpenCL Compute Unit? - opencl</title>
+    <meta name="description" content="In OpenCL architecture, a compute unit represents an independent execution core within a compute device that manages and schedules parallel tasks. This article explores how OpenCL formally defines a compute unit, breaks down its internal relationship wit">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/what-is-an-open-cl-compute-unit">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="What Is an OpenCL Compute Unit? - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/what-is-an-open-cl-compute-unit" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL architecture, a compute unit represents an independent execution core within a compute device that manages and schedules parallel tasks. This article explores how OpenCL formally defines a compute unit, breaks down its internal relationship wit" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="what-is-an-opencl-compute-unit">What Is an OpenCL Compute
+Unit?</h1>
+<p>In OpenCL architecture, a compute unit represents an independent
+execution core within a compute device that manages and schedules
+parallel tasks. This article explores how OpenCL formally defines a
+compute unit, breaks down its internal relationship with processing
+elements, examines how it maps to work-groups and the memory hierarchy,
+and compares the abstraction across major hardware architectures like
+GPUs and multi-core CPUs.</p>
+<h2 id="the-opencl-platform-and-device-model">The OpenCL Platform and
+Device Model</h2>
+<p>The OpenCL specification organizes heterogeneous computing hardware
+through a rigid, hierarchical platform model. At the top sits the host
+processor, typically a standard CPU, connected to one or more OpenCL
+devices such as dedicated GPUs, integrated graphics, digital signal
+processors (DSPs), or FPGAs.</p>
+<p>An OpenCL device is further partitioned into one or more
+<strong>compute units</strong> (CUs). Each compute unit is in turn
+composed of one or more <strong>processing elements</strong> (PEs).
+While the processing element is the fundamental scalar or vector
+execution component responsible for executing individual instructions,
+the compute unit acts as the primary organizational cluster that
+schedules, coordinates, and synchronizes groups of these execution
+streams.</p>
+<h2 id="the-relationship-between-compute-units-and-work-groups">The
+Relationship Between Compute Units and Work-Groups</h2>
+<p>OpenCL executes code through functions called
+<strong>kernels</strong>. When a host enqueues a kernel, it defines an
+execution domain known as the <code>NDRange</code>, composed of discrete
+parallel threads called <strong>work-items</strong>. Work-items are
+organized into rectangular clusters called
+<strong>work-groups</strong>.</p>
+<p>The OpenCL execution model establishes a direct mapping between
+work-groups and compute units:</p>
+<ul>
+<li><strong>Unit of Assignment:</strong> A work-group is assigned to
+execute entirely within a single compute unit. A single compute unit can
+concurrently host multiple work-groups if resources permit, but a single
+work-group cannot span across multiple compute units.</li>
+<li><strong>Synchronization Boundary:</strong> Work-items within the
+same work-group can execute barrier synchronizations
+(<code>work_group_barrier</code>). The compute unit provides the
+hardware coordination required to halt and synchronize these items.
+Because work-groups do not span across compute units, OpenCL does not
+provide hardware-level synchronization across different compute units
+during kernel execution.</li>
+</ul>
+<h2 id="memory-architecture-and-scope">Memory Architecture and
+Scope</h2>
+<p>The OpenCL memory model is closely aligned with the physical
+boundaries of the compute unit. OpenCL defines four distinct memory
+regions, two of which are tightly coupled to the compute unit:</p>
+<ol type="1">
+<li><strong>Local Memory:</strong> This address space is shared
+exclusively among work-items belonging to a specific work-group. In
+hardware, local memory is typically implemented as high-bandwidth,
+low-latency on-chip memory directly embedded inside the compute
+unit.</li>
+<li><strong>Private Memory:</strong> Dedicated solely to an individual
+work-item, this memory usually maps to physical registers within the
+processing elements inside the compute unit.</li>
+<li><strong>Global and Constant Memory:</strong> These regions reside at
+the device level, accessible by all compute units on the device, though
+compute units often incorporate their own localized cache hierarchies
+(such as L1 caches) to accelerate access.</li>
+</ol>
+<p>Because local memory is scoped strictly to a single work-group
+residing on a single compute unit, memory coherency across independent
+compute units is relaxed until a kernel reaches completion or passes
+through atomic operations.</p>
+<h2 id="hardware-implementations-gpus-vs-cpus">Hardware Implementations:
+GPUs vs. CPUs</h2>
+<p>Because OpenCL is designed for heterogeneous hardware, vendors map
+the concept of a compute unit onto their physical architectures
+differently:</p>
+<ul>
+<li><strong>Nvidia GPUs:</strong> A compute unit corresponds to a
+Streaming Multiprocessor (SM). The processing elements inside map to
+CUDA cores (or ALUs), and OpenCL local memory maps directly to the SM's
+shared memory.</li>
+<li><strong>AMD GPUs:</strong> A compute unit maps directly to an AMD
+Compute Unit (CU) or Dual Compute Unit (WGP - Workgroup Processor) in
+modern RDNA architectures. The processing elements represent the vector
+ALUs across SIMD units.</li>
+<li><strong>Multi-Core CPUs:</strong> When a standard CPU acts as an
+OpenCL device, a compute unit typically maps to a single physical CPU
+core (or a hyper-threaded logical core), with the processing elements
+representing the SIMD vector lanes (such as AVX or SSE units) within
+that core.</li>
+</ul>
+<p>Through this abstraction, OpenCL allows developers to write scalable
+parallel code that automatically adapts to the number of available
+execution clusters on any compliant device.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

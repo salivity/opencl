@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLK_FILTER_LINEAR vs CLK_FILTER_NEAREST in OpenCL - opencl</title>
+    <meta name="description" content="This article explains the functional differences, performance implications, and practical use cases of the CLKFILTERNEAREST and CLKFILTERLINEAR sampler filtering modes in OpenCL. OpenCL uses these filtering modes to determine how color values are read an">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/clk-filter-linear-vs-clk-filter-nearest-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="CLK_FILTER_LINEAR vs CLK_FILTER_NEAREST in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/clk-filter-linear-vs-clk-filter-nearest-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explains the functional differences, performance implications, and practical use cases of the CLKFILTERNEAREST and CLKFILTERLINEAR sampler filtering modes in OpenCL. OpenCL uses these filtering modes to determine how color values are read an" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1
+id="clk_filter_linear-vs-clk_filter_nearest-in-opencl">CLK_FILTER_LINEAR
+vs CLK_FILTER_NEAREST in OpenCL</h1>
+<p>This article explains the functional differences, performance
+implications, and practical use cases of the
+<code>CLK_FILTER_NEAREST</code> and <code>CLK_FILTER_LINEAR</code>
+sampler filtering modes in OpenCL. OpenCL uses these filtering modes to
+determine how color values are read and reconstructed from image objects
+when coordinates do not align precisely with discrete pixel centers.
+Understanding these two modes enables developers to balance visual
+fidelity and computational efficiency in image processing pipelines.</p>
+<h2 id="the-role-of-opencl-samplers">The Role of OpenCL Samplers</h2>
+<p>In OpenCL, a sampler object defines how a kernel reads data from an
+image object via built-in read functions (such as
+<code>read_imagef</code>). When reading an image, texture coordinates
+frequently fall between discrete pixel centers (texels), especially when
+scaling, rotating, or transforming an image. The filter mode—set via
+<code>CLK_FILTER_MODE</code>—dictates the mathematical approach used to
+resolve the final color value from the surrounding texels.</p>
+<h2
+id="clk_filter_nearest-nearest-neighbor-filtering">CLK_FILTER_NEAREST:
+Nearest-Neighbor Filtering</h2>
+<p><code>CLK_FILTER_NEAREST</code> implements nearest-neighbor
+interpolation. When a coordinate is sampled, the OpenCL hardware
+identifies the single texel whose center is closest to the sample point
+and returns its exact value without modification.</p>
+<h3 id="characteristics">Characteristics:</h3>
+<ul>
+<li><strong>Visual Result:</strong> Produces sharp, jagged edges. When
+an image is magnified, it results in a visible blocky or pixelated
+appearance because adjacent fractional coordinates map to the same
+discrete pixel.</li>
+<li><strong>Performance:</strong> It is the computationally cheaper
+option. It requires fetching data from only one memory address per
+sample and requires no arithmetic blending.</li>
+<li><strong>Data Support:</strong> Works with all image channel formats,
+including unnormalized integers (<code>int</code>, <code>uint</code>)
+and floating-point data.</li>
+</ul>
+<h3 id="common-use-cases">Common Use Cases:</h3>
+<ul>
+<li>Reading discrete data maps, such as segmentation masks, object IDs,
+or stencil buffers, where mathematical blending between categories would
+produce invalid data.</li>
+<li>Retro-style graphics or applications where pixelation must be
+preserved.</li>
+<li>Highly constrained embedded hardware where memory bandwidth and
+texture unit throughput must be minimized.</li>
+</ul>
+<h2
+id="clk_filter_linear-bilineartrilinear-interpolation">CLK_FILTER_LINEAR:
+Bilinear/Trilinear Interpolation</h2>
+<p><code>CLK_FILTER_LINEAR</code> implements linear interpolation. For
+2D images, it performs bilinear interpolation by fetching the four
+texels surrounding the sample coordinate and calculating a weighted
+average based on the fractional distance to each texel center. For 3D
+images, it performs trilinear interpolation across eight texels.</p>
+<h3 id="characteristics-1">Characteristics:</h3>
+<ul>
+<li><strong>Visual Result:</strong> Produces smooth transitions and
+eliminates the blocky artifacts seen in nearest-neighbor sampling. When
+an image is magnified, edges and color gradients blend naturally.</li>
+<li><strong>Performance:</strong> Modern GPU architectures include
+dedicated texture mapping units (TMUs) that execute linear filtering in
+hardware with minimal overhead. However, on architectures lacking
+dedicated texture hardware, it can incur a higher compute cost due to
+multiple memory fetches and interpolation arithmetic.</li>
+<li><strong>Data Support:</strong> In the OpenCL specification,
+<code>CLK_FILTER_LINEAR</code> is only supported for image formats with
+normalized integer or floating-point components. It cannot be used with
+unnormalized integer image formats (such as 32-bit signed or unsigned
+integers).</li>
+</ul>
+<h3 id="common-use-cases-1">Common Use Cases:</h3>
+<ul>
+<li>Image scaling, affine transformations, and continuous warping where
+smooth visual quality is required.</li>
+<li>Texture mapping in 3D graphics rendering.</li>
+<li>Signal processing algorithms that assume continuous underlying
+fields rather than discrete stepped data.</li>
+</ul>
+<h2 id="key-differences-summary">Key Differences Summary</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Feature</th>
+<th style="text-align: left;"><code>CLK_FILTER_NEAREST</code></th>
+<th style="text-align: left;"><code>CLK_FILTER_LINEAR</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Interpolation Type</strong></td>
+<td style="text-align: left;">Nearest-Neighbor (1 texel)</td>
+<td style="text-align: left;">Bilinear / Trilinear (4 or 8 texels)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Output Appearance</strong></td>
+<td style="text-align: left;">Sharp, blocky, pixelated</td>
+<td style="text-align: left;">Smooth, blended gradients</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Supported Data
+Formats</strong></td>
+<td style="text-align: left;">All data types</td>
+<td style="text-align: left;">Normalized integers and floats only</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Hardware Overhead</strong></td>
+<td style="text-align: left;">Minimal</td>
+<td style="text-align: left;">Low-to-moderate (accelerated via hardware
+TMUs)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Primary Suitability</strong></td>
+<td style="text-align: left;">Categorical data, masks, discrete
+indices</td>
+<td style="text-align: left;">Continuous imagery, photographic data,
+textures</td>
+</tr>
+</tbody>
+</table></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

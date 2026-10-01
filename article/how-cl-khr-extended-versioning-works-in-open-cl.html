@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How cl_khr_extended_versioning Works in OpenCL - opencl</title>
+    <meta name="description" content="This article provides an overview of the clkhrextendedversioning extension in OpenCL, detailing how it addresses the limitations of legacy string-based version queries. You will learn about the introduction of structured semantic versioning, the specific">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-cl-khr-extended-versioning-works-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How cl_khr_extended_versioning Works in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-cl-khr-extended-versioning-works-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article provides an overview of the clkhrextendedversioning extension in OpenCL, detailing how it addresses the limitations of legacy string-based version queries. You will learn about the introduction of structured semantic versioning, the specific" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-cl_khr_extended_versioning-works-in-opencl">How
+cl_khr_extended_versioning Works in OpenCL</h1>
+<p>This article provides an overview of the
+<code>cl_khr_extended_versioning</code> extension in OpenCL, detailing
+how it addresses the limitations of legacy string-based version queries.
+You will learn about the introduction of structured semantic versioning,
+the specific queries introduced by the extension, and how this mechanism
+facilitates precise, reliable feature detection in modern runtimes such
+as OpenCL 3.0.</p>
+<h3 id="the-limitations-of-legacy-version-queries">The Limitations of
+Legacy Version Queries</h3>
+<p>Prior to the introduction of structured versioning, OpenCL required
+developers to query platform and device capabilities through
+descriptive, human-readable strings. Functions like
+<code>clGetPlatformInfo</code> and <code>clGetDeviceInfo</code> returned
+version information using queries such as
+<code>CL_PLATFORM_VERSION</code> and <code>CL_DEVICE_VERSION</code>.
+These strings (for example, <code>"OpenCL 2.0 CUDA 11.0"</code>) bundled
+the core API version with vendor-specific build information.</p>
+<p>Similarly, extension support was queried via
+<code>CL_PLATFORM_EXTENSIONS</code> or
+<code>CL_DEVICE_EXTENSIONS</code>, which returned a single
+space-delimited string containing all supported extension names. This
+approach suffered from several drawbacks:</p>
+<ul>
+<li><strong>Error-Prone Parsing:</strong> Applications had to manually
+parse strings to extract major and minor version numbers or check for
+exact extension names without accidental substring matches.</li>
+<li><strong>No Patch Level Tracking:</strong> String-based versions
+generally omitted patch-level details for bug fixes or minor
+specification revisions.</li>
+<li><strong>No Versioned Extensions:</strong> Extensions can evolve over
+time, but the legacy string format only communicated the presence of an
+extension, not its specific revision.</li>
+</ul>
+<h3
+id="structured-versioning-with-cl_khr_extended_versioning">Structured
+Versioning with <code>cl_khr_extended_versioning</code></h3>
+<p>The <code>cl_khr_extended_versioning</code> extension—which was
+integrated directly into the OpenCL 3.0 core specification—replaces
+string parsing with strongly-typed numeric representations following
+Semantic Versioning (SemVer: Major.Minor.Patch).</p>
+<p>The extension introduces two fundamental data types:</p>
+<ol type="1">
+<li><p><strong><code>cl_version</code></strong>: A 32-bit unsigned
+integer encoding major, minor, and patch numbers into distinct bitfields
+using the <code>CL_MAKE_VERSION</code> macro:</p>
+<ul>
+<li><strong>Bits 31–22 (10 bits):</strong> Major version</li>
+<li><strong>Bits 21–12 (10 bits):</strong> Minor version</li>
+<li><strong>Bits 11–0 (12 bits):</strong> Patch version</li>
+</ul>
+<p>Developers can decode these values directly using helper macros:
+<code>CL_VERSION_MAJOR</code>, <code>CL_VERSION_MINOR</code>, and
+<code>CL_VERSION_PATCH</code>.</p></li>
+<li><p><strong><code>cl_name_version</code></strong>: A structure
+combining an extension or feature name with its corresponding
+<code>cl_version</code>:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">typedef</span> <span class="kw">struct</span> _cl_name_version <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    cl_version version<span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">char</span> name<span class="op">[</span>CL_NAME_VERSION_MAX_NAME_SIZE<span class="op">];</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> cl_name_version<span class="op">;</span></span></code></pre></div></li>
+</ol>
+<h3 id="new-platform-and-device-queries">New Platform and Device
+Queries</h3>
+<p>By adopting structured types, <code>cl_khr_extended_versioning</code>
+introduces dedicated query parameters that bypass string parsing
+entirely:</p>
+<ul>
+<li><p><strong><code>CL_PLATFORM_NUMERIC_VERSION</code> and
+<code>CL_DEVICE_NUMERIC_VERSION</code></strong>: Return a single
+<code>cl_version</code> representing the runtime or device
+implementation level directly. Checking if a device supports OpenCL 3.0
+or higher is reduced to a standard numerical comparison:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>cl_version ver<span class="op">;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>clGetDeviceInfo<span class="op">(</span>device<span class="op">,</span> CL_DEVICE_NUMERIC_VERSION<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span>ver<span class="op">),</span> <span class="op">&amp;</span>ver<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>ver <span class="op">&gt;=</span> CL_MAKE_VERSION<span class="op">(</span><span class="dv">3</span><span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0</span><span class="op">))</span> <span class="op">{</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Device supports OpenCL 3.0+</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div></li>
+<li><p><strong><code>CL_PLATFORM_EXTENSIONS_WITH_VERSION</code> and
+<code>CL_DEVICE_EXTENSIONS_WITH_VERSION</code></strong>: Return an array
+of <code>cl_name_version</code> structures. This allows an application
+to iterate through supported extensions, verify their exact names, and
+inspect the specific version implemented by the driver.</p></li>
+<li><p><strong><code>CL_DEVICE_OPENCL_C_ALL_VERSIONS</code></strong>:
+Returns an array of <code>cl_name_version</code> structs describing
+every OpenCL C shading language version supported by the device's
+compiler, rather than only the single maximum version returned by
+<code>CL_DEVICE_OPENCL_C_VERSION</code>.</p></li>
+</ul>
+<h3 id="role-in-opencl-30-feature-granularity">Role in OpenCL 3.0
+Feature Granularity</h3>
+<p>The shift toward structured version queries became critical with the
+release of OpenCL 3.0. Unlike OpenCL 2.x, which required conforming
+devices to implement the full suite of modern hardware features (such as
+shared virtual memory, generic address spaces, and 3D image writes),
+OpenCL 3.0 made many of these capabilities optional.</p>
+<p>Because features are now modular, a modern OpenCL application cannot
+infer feature availability solely from the core API version. By pairing
+structured version queries with dedicated feature-checking queries (such
+as <code>CL_DEVICE_OPENCL_C_FEATURES</code>),
+<code>cl_khr_extended_versioning</code> provides a deterministic
+framework for hardware capability negotiation, eliminating parsing
+ambiguity and improving application robustness across diverse hardware
+targets.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

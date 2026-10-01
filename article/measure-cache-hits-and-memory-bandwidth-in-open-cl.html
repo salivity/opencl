@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Measure Cache Hits and Memory Bandwidth in OpenCL - opencl</title>
+    <meta name="description" content="Optimizing OpenCL kernels requires understanding memory subsystem efficiency, specifically how effectively data is cached and whether the kernel saturates the available device memory bandwidth. Because the standard OpenCL API does not expose low-level ha">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/measure-cache-hits-and-memory-bandwidth-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Measure Cache Hits and Memory Bandwidth in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/measure-cache-hits-and-memory-bandwidth-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Optimizing OpenCL kernels requires understanding memory subsystem efficiency, specifically how effectively data is cached and whether the kernel saturates the available device memory bandwidth. Because the standard OpenCL API does not expose low-level ha" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="measure-cache-hits-and-memory-bandwidth-in-opencl">Measure Cache
+Hits and Memory Bandwidth in OpenCL</h1>
+<p>Optimizing OpenCL kernels requires understanding memory subsystem
+efficiency, specifically how effectively data is cached and whether the
+kernel saturates the available device memory bandwidth. Because the
+standard OpenCL API does not expose low-level hardware performance
+counters, measuring cache hit rates and memory bandwidth saturation
+relies on vendor-specific hardware profiling tools or combining OpenCL
+event profiling with analytical calculation models. This guide outlines
+the exact tools, metrics, and formulas needed to extract these
+performance indicators across major hardware platforms.</p>
+<h3 id="1-using-vendor-specific-hardware-profilers">1. Using
+Vendor-Specific Hardware Profilers</h3>
+<p>OpenCL abstractly targets heterogeneous architectures, but physical
+cache lines and memory controllers exist at the hardware level. To view
+hardware counters directly, you must use the profiler tailored to your
+target device:</p>
+<ul>
+<li><strong>NVIDIA GPUs (Nsight Compute):</strong> While designed
+primarily for CUDA, Nsight Compute can profile OpenCL kernels running on
+NVIDIA hardware. Focus on the metric
+<code>l1tex__t_sectors_pipe_lsu_mem_global_op_ld_lookup_hitrate.pct</code>
+for L1 cache hits and <code>lts__t_sectors_hitrate.pct</code> for L2
+cache hit rate. For bandwidth, inspect
+<code>dram__bytes.sum.per_second</code> to see actual memory throughput
+compared to peak capacity.</li>
+<li><strong>AMD GPUs (Radeon Developer Tool Suite / ROCm
+Profiler):</strong> Use <code>rocprof</code> or the Radeon GPU Profiler
+(RGP). Key metrics include <code>TCC_HIT</code> and
+<code>TCC_MISS</code> (Texture Cache / L2 cache hit and miss counts).
+Memory saturation is measured via the channels reporting memory
+controller requests and utilization percentages of the High Bandwidth
+Memory (HBM) or GDDR bus.</li>
+<li><strong>Intel GPUs and CPUs (Intel VTune Profiler):</strong> Intel
+VTune provides the "GPU Compute/Media Hotspots" analysis mode. It
+directly visualizes L3 cache hit/miss rates, sampler cache performance,
+and the Graphics Technology Interface (GTI) bandwidth to system
+memory.</li>
+</ul>
+<h3 id="2-measuring-cache-hit-rates">2. Measuring Cache Hit Rates</h3>
+<p>Cache performance is measured by tracking requests that hit versus
+those that require a lookup in a higher-level cache or global DRAM.</p>
+<p>Using vendor counters, the hit rate percentage is calculated as:</p>
+<p><span class="math display">\[\text{Cache Hit Rate (\%)} =
+\frac{\text{Total Cache Hits}}{\text{Total Cache Hits} + \text{Total
+Cache Misses}} \times 100\]</span></p>
+<p>If hit rates are low (typically below 60% for memory-bound
+algorithms), it indicates irregular or uncoalesced memory access
+patterns. In OpenCL, improving memory coalescing—ensuring adjacent
+work-items access adjacent memory addresses—directly increases cache
+line utilization and reduces cache misses.</p>
+<h3 id="3-measuring-memory-bandwidth-saturation">3. Measuring Memory
+Bandwidth Saturation</h3>
+<p>Bandwidth saturation indicates whether a kernel is fundamentally
+bottlenecked by the device's physical memory bus. Assessing saturation
+requires calculating both theoretical peak bandwidth and effective
+memory bandwidth.</p>
+<h4 id="step-a-determine-theoretical-peak-bandwidth">Step A: Determine
+Theoretical Peak Bandwidth</h4>
+<p>Locate your hardware's specifications for memory clock rate, bus
+width, and data multiplier (e.g., DDR/GDDR):</p>
+<p><span class="math display">\[\text{Theoretical Bandwidth (GB/s)} =
+\frac{\text{Memory Clock (MHz)} \times \text{Bus Width (bits)} \times
+\text{Multiplier}}{8 \times 1000}\]</span></p>
+<h4 id="step-b-measure-effective-memory-bandwidth">Step B: Measure
+Effective Memory Bandwidth</h4>
+<p>To calculate the bandwidth achieved by your kernel, record the
+precise execution time and compute the total data transferred:</p>
+<ol type="1">
+<li><strong>Measure Execution Time:</strong> Enable profiling by passing
+<code>CL_QUEUE_PROFILING_ENABLE</code> when creating the OpenCL command
+queue. Query the start and end execution timestamps using
+<code>clGetEventProfilingInfo</code> with
+<code>CL_PROFILING_COMMAND_START</code> and
+<code>CL_PROFILING_COMMAND_END</code>. The difference yields duration in
+nanoseconds.</li>
+<li><strong>Calculate Bytes Transferred:</strong> Sum the exact number
+of bytes read from global memory buffers and written back to global
+memory buffers over the execution.</li>
+</ol>
+<p>Calculate the achieved bandwidth:</p>
+<p><span class="math display">\[\text{Achieved Bandwidth (GB/s)} =
+\frac{(\text{Bytes Read} + \text{Bytes Written}) \times
+10^9}{\text{Execution Time (ns)} \times 10^9}\]</span></p>
+<h4 id="step-c-evaluate-saturation">Step C: Evaluate Saturation</h4>
+<p>Compare the achieved bandwidth to the theoretical maximum:</p>
+<p><span class="math display">\[\text{Bandwidth Saturation (\%)} =
+\frac{\text{Achieved Bandwidth}}{\text{Theoretical Bandwidth}} \times
+100\]</span></p>
+<p>Due to protocol overhead, command arbitration, and burst alignment
+limits, real-world saturation typically tops out between 75% and 85% of
+theoretical peak bandwidth. If your kernel achieves metrics in this
+range, the kernel is fully memory-bound, and further gains will require
+algorithmic changes to reduce total data access, such as moving
+intermediate data into OpenCL <code>__local</code> memory.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

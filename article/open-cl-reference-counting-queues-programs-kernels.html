@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Reference Counting: Queues, Programs, Kernels - opencl</title>
+    <meta name="description" content="OpenCL manages the lifecycle of runtime objects through reference counting, an internal tracking mechanism that ensures objects remain valid while in use and are safely deallocated when no longer needed. This article explains how reference counting speci">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-reference-counting-queues-programs-kernels">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Reference Counting: Queues, Programs, Kernels - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-reference-counting-queues-programs-kernels" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL manages the lifecycle of runtime objects through reference counting, an internal tracking mechanism that ensures objects remain valid while in use and are safely deallocated when no longer needed. This article explains how reference counting speci" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-reference-counting-queues-programs-kernels">OpenCL
+Reference Counting: Queues, Programs, Kernels</h1>
+<p>OpenCL manages the lifecycle of runtime objects through reference
+counting, an internal tracking mechanism that ensures objects remain
+valid while in use and are safely deallocated when no longer needed.
+This article explains how reference counting specifically applies to
+OpenCL command queues, programs, and kernels, detailing creation,
+retention, release cycles, and the dependency relationships that govern
+their destruction.</p>
+<h2 id="fundamentals-of-opencl-reference-counting">Fundamentals of
+OpenCL Reference Counting</h2>
+<p>Every OpenCL resource object maintains an internal integer counter
+called the reference count. The lifecycle rules are uniform across the
+API:</p>
+<ul>
+<li><strong>Creation:</strong> When an object is created, its reference
+count is initialized to 1.</li>
+<li><strong>Retention:</strong> Calling a retain function increments the
+reference count by 1.</li>
+<li><strong>Release:</strong> Calling a release function decrements the
+reference count by 1.</li>
+<li><strong>Deallocation:</strong> When the reference count drops to 0,
+the object is marked for deletion. However, physical deallocation only
+occurs once all active commands associated with or dependent on the
+object have finished executing.</li>
+</ul>
+<p>You can inspect the current count of an object using its respective
+info function (such as <code>clGetCommandQueueInfo</code>,
+<code>clGetProgramInfo</code>, or <code>clGetKernelInfo</code>) by
+querying <code>CL_*_REFERENCE_COUNT</code>. This value is primarily
+intended for debugging, as it may change concurrently in multithreaded
+applications.</p>
+<h2 id="reference-counting-on-command-queues">Reference Counting on
+Command Queues</h2>
+<p>Command queues execute commands sent from the host to a device.</p>
+<ul>
+<li><strong>Creation:</strong> Created via
+<code>clCreateCommandQueueWithProperties</code> (or
+<code>clCreateCommandQueue</code> in OpenCL 1.x/2.0), initializing the
+reference count to 1.</li>
+<li><strong>Retain &amp; Release:</strong> Controlled via
+<code>clRetainCommandQueue</code> and
+<code>clReleaseCommandQueue</code>.</li>
+</ul>
+<p>A command queue is not immediately destroyed when its reference count
+reaches zero if there are still pending or enqueued commands inside it.
+The OpenCL runtime ensures all enqueued commands finish execution and
+associated events resolve before reclaiming the queue's memory and
+underlying hardware resources.</p>
+<h2 id="reference-counting-on-programs">Reference Counting on
+Programs</h2>
+<p>An OpenCL program object encapsulates compiled device code, source
+code, and target device binaries.</p>
+<ul>
+<li><strong>Creation:</strong> Created using functions like
+<code>clCreateProgramWithSource</code> or
+<code>clCreateProgramWithBinary</code>, starting with a reference count
+of 1.</li>
+<li><strong>Retain &amp; Release:</strong> Managed through
+<code>clRetainProgram</code> and <code>clReleaseProgram</code>.</li>
+</ul>
+<p>Programs have an explicit dependency hierarchy with kernels. Whenever
+a kernel is created from a program, the OpenCL runtime maintains an
+implicit internal reference to the parent program. Consequently, even if
+your application explicitly calls <code>clReleaseProgram</code> until
+the host reference count hits zero, the underlying program object will
+persist in memory until all derived kernels are also destroyed.</p>
+<h2 id="reference-counting-on-kernels">Reference Counting on
+Kernels</h2>
+<p>A kernel object represents a specific <code>__kernel</code> function
+inside a program along with the argument values bound to it.</p>
+<ul>
+<li><strong>Creation:</strong> Instantiated using
+<code>clCreateKernel</code> or <code>clCreateKernelsInProgram</code>,
+establishing an initial reference count of 1.</li>
+<li><strong>Retain &amp; Release:</strong> Tracked with
+<code>clRetainKernel</code> and <code>clReleaseKernel</code>.</li>
+</ul>
+<p>Kernels can be submitted to command queues repeatedly with different
+arguments. When <code>clReleaseKernel</code> brings the count to zero,
+the runtime checks if any command queue currently contains an enqueued
+execution instance (<code>clEnqueueNDRangeKernel</code>) that has not
+completed. The kernel resources remain intact until execution concludes.
+Once freed, the internal reference held against the originating program
+object is released.</p>
+<h2 id="managing-nested-dependencies">Managing Nested Dependencies</h2>
+<p>Proper memory management in OpenCL requires pairing every creation
+and retain call with an equivalent release call. Because kernels depend
+on programs, and command queues execute kernel dispatches
+asynchronously, the reference counting system decouples host-side handle
+lifetimes from device-side execution lifetimes. Releasing an object on
+the host immediately signals your intent to free it, while the runtime
+guarantees execution safety across asynchronous boundaries.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

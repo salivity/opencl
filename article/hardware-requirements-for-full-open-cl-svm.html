@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardware Requirements for Full OpenCL SVM - opencl</title>
+    <meta name="description" content="Full OpenCL Shared Virtual Memory (SVM)—specifically Fine-Grained System SVM with atomics—allows host CPUs and OpenCL accelerator devices to seamlessly share an entire virtual address space, pass arbitrary pointer-based data structures without manual">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/hardware-requirements-for-full-open-cl-svm">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Hardware Requirements for Full OpenCL SVM - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/hardware-requirements-for-full-open-cl-svm" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Full OpenCL Shared Virtual Memory (SVM)—specifically Fine-Grained System SVM with atomics—allows host CPUs and OpenCL accelerator devices to seamlessly share an entire virtual address space, pass arbitrary pointer-based data structures without manual" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="hardware-requirements-for-full-opencl-svm">Hardware Requirements
+for Full OpenCL SVM</h1>
+<p>Full OpenCL Shared Virtual Memory (SVM)—specifically Fine-Grained
+System SVM with atomics—allows host CPUs and OpenCL accelerator devices
+to seamlessly share an entire virtual address space, pass arbitrary
+pointer-based data structures without manual translation, and maintain
+concurrent data consistency. Achieving this level of transparent memory
+sharing requires specialized hardware cooperation between the host CPU's
+memory management system and a cache-coherent interconnect capable of
+handling device-initiated page faults and atomic operations.</p>
+<h3 id="definition-of-full-svm-requirements">Definition of Full SVM
+Requirements</h3>
+<p>In the OpenCL specification, the most advanced tier of SVM is
+<strong>Fine-Grained System SVM</strong>. Unlike coarse-grained or
+fine-grained buffer SVM, system SVM removes the requirement to allocate
+memory using <code>clSVMAlloc</code>. Pointers allocated via standard
+system allocators (<code>malloc</code>, <code>new</code>) or pointing to
+the stack/global variables can be directly dereferenced by the device.
+To make this functional, the underlying hardware must satisfy several
+critical architectural prerequisites.</p>
+<h3 id="1-iommu-with-shared-virtual-addressing-sva">1. IOMMU with Shared
+Virtual Addressing (SVA)</h3>
+<p>The host system must feature an advanced Input-Output Memory
+Management Unit (IOMMU) on x86, or a System MMU (SMMU) on ARM, capable
+of Shared Virtual Addressing. Key requirements include:</p>
+<ul>
+<li><strong>PASID (Process Address Space Identifier):</strong> The CPU
+and IOMMU must support PASID tagging to multiplex multiple processes
+over the same interconnect, binding a device context directly to the
+host process’s page table.</li>
+<li><strong>Unified Page Tables:</strong> The IOMMU must either natively
+walk the host CPU's multi-level page tables (such as CR3 on x86) or
+maintain synchronized shadow tables with the host CPU MMU.</li>
+</ul>
+<h3 id="2-interconnect-protocols-pcie-ats-and-pri">2. Interconnect
+Protocols: PCIe ATS and PRI</h3>
+<p>Standard PCIe is traditionally unaware of CPU virtual memory
+structures. For full SVM across discrete buses, the interconnect and
+host root complex must support specific PCI-SIG extensions:</p>
+<ul>
+<li><strong>Address Translation Services (ATS):</strong> Allows the
+accelerator to query the host IOMMU to translate virtual addresses to
+physical addresses and cache these translations in a local Device
+Translation Lookaside Buffer (DevTLB).</li>
+<li><strong>Page Request Interface (PRI):</strong> Allows the device to
+trigger recoverable page faults. If the device accesses an unmapped
+virtual address, PRI sends a request to the host OS to allocate physical
+memory or page in data from swap/disk before resuming device
+execution.</li>
+</ul>
+<h3 id="3-hardware-enforced-cache-coherency">3. Hardware-Enforced Cache
+Coherency</h3>
+<p>Fine-grained access necessitates that both the host CPU and the
+accelerator read and write to the same physical memory addresses
+concurrently without manual cache flushing or invalidation:</p>
+<ul>
+<li><strong>Snooping and Invalidation:</strong> The interconnect must
+route cache-coherency traffic (such as MESI/MOESI protocol messages)
+between the CPU cache hierarchy and device caches.</li>
+<li><strong>Modern Interconnect Standards:</strong> While standard PCIe
+lacks native, low-latency symmetric cache coherency, newer standards
+like <strong>Compute Express Link (CXL.cache / CXL.mem)</strong>,
+<strong>CCIX</strong>, or vendor-specific fabrics (like AMD Infinity
+Fabric or NVLink) provide the symmetric, hardware-managed cache
+coherence needed to make fine-grained sharing performant.</li>
+</ul>
+<h3 id="4-cross-device-hardware-atomics">4. Cross-Device Hardware
+Atomics</h3>
+<p>To support synchronization primitives and lock-free data structures
+across CPU and GPU cores, the host CPU and fabric must support
+bidirectional atomic transactions:</p>
+<ul>
+<li>The interconnect must forward standard atomic operations (e.g.,
+Compare-And-Swap, Fetch-and-Add) to the memory controller or cache
+controller where the target cache line resides.</li>
+<li>The host CPU memory controller must be capable of arbitrating atomic
+requests originating from an external device with the same ordering
+guarantees applied to CPU-generated atomics.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

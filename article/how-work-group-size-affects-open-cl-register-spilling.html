@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How Work-Group Size Affects OpenCL Register Spilling - opencl</title>
+    <meta name="description" content="In OpenCL development, the chosen work-group size directly dictates how a GPU or accelerator divides its finite hardware register file among concurrent work-items. When a work-group is sized too large for a kernel with high register pressure, the compile">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-work-group-size-affects-open-cl-register-spilling">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How Work-Group Size Affects OpenCL Register Spilling - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-work-group-size-affects-open-cl-register-spilling" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL development, the chosen work-group size directly dictates how a GPU or accelerator divides its finite hardware register file among concurrent work-items. When a work-group is sized too large for a kernel with high register pressure, the compile" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-work-group-size-affects-opencl-register-spilling">How
+Work-Group Size Affects OpenCL Register Spilling</h1>
+<p>In OpenCL development, the chosen work-group size directly dictates
+how a GPU or accelerator divides its finite hardware register file among
+concurrent work-items. When a work-group is sized too large for a kernel
+with high register pressure, the compiler cannot allocate enough
+physical registers to each thread, forcing excess variables to spill
+into high-latency private memory. Understanding this trade-off between
+thread concurrency, register availability, and memory spilling is
+essential for optimizing compute throughput and avoiding severe
+memory-bound latency.</p>
+<h3 id="the-physical-register-file-and-resource-limits">The Physical
+Register File and Resource Limits</h3>
+<p>Every Compute Unit (CU) or Streaming Multiprocessor contains a fixed,
+physical pool of ultra-fast registers. When an OpenCL kernel executes,
+the hardware allocates a portion of this register file to every
+work-item in the active work-groups scheduled on that unit.</p>
+<p>The total register demand per work-group is roughly determined by the
+number of work-items in the group multiplied by the number of registers
+a single work-item requires to execute its instructions. Because the
+physical register pool is statically bounded, the hardware can only
+support a specific ceiling of simultaneous registers before resources
+are exhausted.</p>
+<h3 id="how-increasing-work-group-size-triggers-spilling">How Increasing
+Work-Group Size Triggers Spilling</h3>
+<p>When you increase the work-group size (for example, from 64 to 256 or
+512 work-items), you increase the aggregate register demand for that
+single block of execution. If the product of the work-group size and the
+required registers per work-item exceeds the available register file per
+scheduling unit, the OpenCL compiler must resolve the deficit.</p>
+<p>Because the compiler cannot change the physical hardware or reduce
+the requested work-group size on its own, it has two choices: fail
+compilation or spill registers. Modern compilers will choose to spill:
+they reduce the register allocation per work-item to fit the work-group
+onto the hardware, offloading the remaining variables into private
+memory.</p>
+<h3 id="the-consequence-of-register-spills-to-private-memory">The
+Consequence of Register Spills to Private Memory</h3>
+<p>In OpenCL's memory hierarchy, private memory is conceptually local to
+an individual work-item. However, physically, architectures rarely have
+a dedicated hardware block for deep private memory. Instead, private
+memory that does not fit into registers is backed by global device
+memory (DRAM) or a dedicated scratchpad cache.</p>
+<p>When registers spill to private memory:</p>
+<ul>
+<li><strong>Latency Increases Dramatically:</strong> Accessing a spilled
+variable requires executing explicit memory load and store instructions
+to L1/L2 caches or off-chip DRAM instead of reading a single-cycle
+register.</li>
+<li><strong>Memory Bandwidth Becomes Saturated:</strong> Repeated spills
+within tight loops waste cache lines and consume valuable memory bus
+bandwidth that should otherwise be reserved for application data
+buffers.</li>
+<li><strong>Instruction Overhead Rises:</strong> Additional instructions
+must be scheduled simply to move data in and out of the spill storage,
+lowering the overall arithmetic intensity of the kernel.</li>
+</ul>
+<h3 id="balancing-work-group-size-to-prevent-spills">Balancing
+Work-Group Size to Prevent Spills</h3>
+<p>To avoid unwanted register spilling, work-group sizes must be chosen
+to balance occupancy and register usage:</p>
+<ol type="1">
+<li><strong>Calculate the Register Footprint:</strong> Use
+vendor-specific offline compiler tools (such as those from AMD, Intel,
+or NVIDIA) to inspect how many registers each work-item in your kernel
+consumes.</li>
+<li><strong>Reduce Work-Group Size for Complex Kernels:</strong> If a
+kernel performs complex math, holds many local variables, or unrolls
+large loops, it inherently demands more registers. Reducing the
+work-group size (e.g., setting it to 64 or 128 instead of 256) reduces
+the instantaneous register pressure, allowing the compiler to keep all
+variables in physical registers.</li>
+<li><strong>Explicitly Bound Sizes in Code:</strong> Use the
+<code>__attribute__((reqd_work_group_size(X, Y, Z)))</code> qualifier in
+your OpenCL C code. This hints the compiler to the exact dimensions of
+the work-group, enabling it to optimize register allocation precisely
+for that size rather than preparing for an arbitrary worst-case
+configuration.</li>
+<li><strong>Minimize Variable Lifetimes:</strong> In the kernel code,
+keep the scope of variables as narrow as possible. When the compiler
+detects that a variable's value is no longer needed, it can immediately
+reuse that physical register for a different variable, lowering the risk
+of spilling even with larger work-group sizes.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integrating OpenMP and OpenCL in Hybrid HPC - opencl</title>
+    <meta name="description" content="Integrating OpenMP and OpenCL within a hybrid high-performance computing (HPC) architecture enables applications to leverage both symmetric multi-core CPUs and heterogeneous accelerators such as GPUs and FPGAs. This article outlines the architectural blu">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/integrating-open-mp-and-open-cl-in-hybrid-hpc">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Integrating OpenMP and OpenCL in Hybrid HPC - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/integrating-open-mp-and-open-cl-in-hybrid-hpc" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Integrating OpenMP and OpenCL within a hybrid high-performance computing (HPC) architecture enables applications to leverage both symmetric multi-core CPUs and heterogeneous accelerators such as GPUs and FPGAs. This article outlines the architectural blu" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="integrating-openmp-and-opencl-in-hybrid-hpc">Integrating OpenMP
+and OpenCL in Hybrid HPC</h1>
+<p>Integrating OpenMP and OpenCL within a hybrid high-performance
+computing (HPC) architecture enables applications to leverage both
+symmetric multi-core CPUs and heterogeneous accelerators such as GPUs
+and FPGAs. This article outlines the architectural blueprint,
+work-partitioning strategies, execution models, and memory
+synchronization techniques required to successfully combine these two
+parallel programming paradigms into a unified, high-throughput
+computational pipeline.</p>
+<h3 id="architectural-roles-and-workload-partitioning">Architectural
+Roles and Workload Partitioning</h3>
+<p>A successful hybrid architecture divides responsibilities according
+to the structural strengths of each framework:</p>
+<ul>
+<li><strong>OpenMP (Host-Level Coarse-Grained Parallelism):</strong>
+OpenMP operates on the host CPU. It manages multi-threading, dynamic
+task scheduling, file I/O, inter-node communication wrappers (such as
+MPI integration), and orchestrates coarse-grained loops. It also handles
+pre-processing, post-processing, and non-uniform control-flow logic that
+is inefficient on vector architectures.</li>
+<li><strong>OpenCL (Device-Level Fine-Grained Parallelism):</strong>
+OpenCL executes compute-intensive, data-parallel kernels across discrete
+accelerators. It exploits SIMD/SIMT architectures to process massive
+data arrays with high arithmetic intensity.</li>
+</ul>
+<h3 id="system-execution-models">System Execution Models</h3>
+<p>There are two primary patterns for structuring the execution of
+OpenMP and OpenCL together:</p>
+<h4 id="1-master-worker-orchestration">1. Master-Worker
+Orchestration</h4>
+<p>A single OpenMP thread (often the master thread) interacts with the
+OpenCL API. It initializes the OpenCL platform, compiles kernels,
+allocates device buffers, and enqueues commands. Meanwhile, the
+remaining OpenMP worker threads execute CPU-bound parallel workloads
+simultaneously using <code>#pragma omp parallel for</code>. This avoids
+multi-threaded driver contention and simplifies execution pipelines.</p>
+<h4 id="2-multi-threaded-queue-management-thread-to-device-mapping">2.
+Multi-Threaded Queue Management (Thread-to-Device Mapping)</h4>
+<p>In systems with multiple accelerators, each OpenMP thread is mapped
+to a specific OpenCL command queue or discrete compute device. Within an
+OpenMP parallel region, each thread acquires an OpenCL device ID,
+creates an independent command queue, and schedules asynchronous
+kernels:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#pragma omp parallel num_threads(num_devices)</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> tid <span class="op">=</span> omp_get_thread_num<span class="op">();</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    cl_command_queue queue <span class="op">=</span> queues<span class="op">[</span>tid<span class="op">];</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Asynchronous host-to-device transfer</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    clEnqueueWriteBuffer<span class="op">(</span>queue<span class="op">,</span> d_input<span class="op">[</span>tid<span class="op">],</span> CL_FALSE<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> bytes<span class="op">,</span> h_input<span class="op">[</span>tid<span class="op">],</span> <span class="dv">0</span><span class="op">,</span> NULL<span class="op">,</span> <span class="op">&amp;</span>write_event<span class="op">[</span>tid<span class="op">]);</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Kernel execution</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    clEnqueueNDRangeKernel<span class="op">(</span>queue<span class="op">,</span> kernel<span class="op">[</span>tid<span class="op">],</span> <span class="dv">1</span><span class="op">,</span> NULL<span class="op">,</span> <span class="op">&amp;</span>global_size<span class="op">,</span> <span class="op">&amp;</span>local_size<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> <span class="op">&amp;</span>write_event<span class="op">[</span>tid<span class="op">],</span> <span class="op">&amp;</span>kernel_event<span class="op">[</span>tid<span class="op">]);</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="co">// CPU executes independent tasks while device computes</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    execute_host_task<span class="op">(</span>tid<span class="op">);</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Wait for OpenCL completion</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    clWaitForEvents<span class="op">(</span><span class="dv">1</span><span class="op">,</span> <span class="op">&amp;</span>kernel_event<span class="op">[</span>tid<span class="op">]);</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Read results back</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    clEnqueueReadBuffer<span class="op">(</span>queue<span class="op">,</span> d_output<span class="op">[</span>tid<span class="op">],</span> CL_TRUE<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> bytes<span class="op">,</span> h_output<span class="op">[</span>tid<span class="op">],</span> <span class="dv">0</span><span class="op">,</span> NULL<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="memory-management-and-synchronization">Memory Management and
+Synchronization</h3>
+<p>Bridging the memory divide between OpenMP and OpenCL requires careful
+design to prevent I/O bottlenecks and data corruption:</p>
+<ul>
+<li><strong>Asynchronous Overlap:</strong> Compute-communication
+overlaps must be maintained by setting non-blocking flags
+(<code>CL_FALSE</code>) during host-device memory transfers. This allows
+OpenMP CPU workloads to proceed while the PCIe bus transmits data.</li>
+<li><strong>Thread Safety in Runtimes:</strong> While the OpenCL API
+standard specifies thread safety across separate command queues,
+multiple OpenMP threads targeting the same command queue require
+explicit synchronization (such as <code>#pragma omp critical</code>) to
+prevent race conditions during buffer allocation and enqueue steps.</li>
+<li><strong>Shared Virtual Memory (SVM):</strong> In platforms
+supporting OpenCL 2.0 and later, SVM can be leveraged. Coarse-grained or
+fine-grained SVM eliminates explicit host-to-device buffer copies,
+allowing OpenMP CPU threads and OpenCL kernel work-items to share
+pointer-based data structures directly across a unified virtual address
+space.</li>
+<li><strong>Event-Driven Synchronization:</strong> OpenCL events
+(<code>cl_event</code>) should coordinate device operations, whereas
+OpenMP barriers (<code>#pragma omp barrier</code>) and taskwait pragmas
+(<code>#pragma omp taskwait</code>) coordinate CPU threads. Transition
+points between the CPU and the device must use
+<code>clWaitForEvents</code> to establish explicit memory visibility
+before OpenMP threads access accelerator outputs.</li>
+</ul>
+<h3 id="load-balancing-strategies">Load Balancing Strategies</h3>
+<p>To achieve peak efficiency, execution time must be balanced across
+host cores and accelerators:</p>
+<ul>
+<li><strong>Static Chunking:</strong> Work is statically divided
+according to the predetermined performance ratio between the CPU and
+accelerator (for example, 20% to OpenMP, 80% to OpenCL).</li>
+<li><strong>Dynamic Tasking:</strong> OpenMP dynamic tasks
+(<code>#pragma omp task</code>) allow threads to pull smaller workload
+chunks from a centralized queue. Whichever compute resource (CPU core or
+OpenCL queue) finishes early dynamically consumes the next chunk,
+preventing idle synchronization stalls caused by static scheduling
+miscalculations.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

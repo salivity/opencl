@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL and DirectX Interop for Textures and Buffers - opencl</title>
+    <meta name="description" content="Interoperating OpenCL with DirectX on Windows enables high-performance computing pipelines by allowing OpenCL kernels to directly read from and write to Direct3D graphics resources—such as textures and vertex buffers—without transferring data back to">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-and-direct-x-interop-for-textures-and-buffers">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL and DirectX Interop for Textures and Buffers - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-and-direct-x-interop-for-textures-and-buffers" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Interoperating OpenCL with DirectX on Windows enables high-performance computing pipelines by allowing OpenCL kernels to directly read from and write to Direct3D graphics resources—such as textures and vertex buffers—without transferring data back to" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-and-directx-interop-for-textures-and-buffers">OpenCL and
+DirectX Interop for Textures and Buffers</h1>
+<p>Interoperating OpenCL with DirectX on Windows enables
+high-performance computing pipelines by allowing OpenCL kernels to
+directly read from and write to Direct3D graphics resources—such as
+textures and vertex buffers—without transferring data back to host
+memory. This article explains the architectural mechanism of this
+interoperability, the extensions involved, context creation, and the
+process of acquiring, manipulating, and releasing shared resources
+between the two APIs.</p>
+<h3 id="core-interoperability-extensions">Core Interoperability
+Extensions</h3>
+<p>DirectX-OpenCL interoperability is achieved through Khronos
+extensions, predominantly <code>cl_khr_d3d11_sharing</code> for Direct3D
+11 and <code>cl_khr_d3d10_sharing</code> for Direct3D 10. These
+extensions provide the function pointers required to bridge Direct3D
+resources to OpenCL memory objects (<code>cl_mem</code>). Because these
+functions are extension-based, they must be loaded at runtime using
+<code>clGetExtensionFunctionAddressForPlatform</code>.</p>
+<h3 id="context-creation-and-device-query">Context Creation and Device
+Query</h3>
+<p>Before sharing resources, the OpenCL context must be bound to the
+existing Direct3D device. This ensures both APIs operate on the same
+physical GPU and share the same virtual address space.</p>
+<ol type="1">
+<li><strong>Query Matching Devices:</strong> The function
+<code>clGetDeviceIDsFromD3D11KHR</code> queries the OpenCL device
+corresponding to an existing <code>ID3D11Device</code>.</li>
+<li><strong>Initialize the Context:</strong> When calling
+<code>clCreateContext</code>, the <code>cl_context_properties</code>
+array must include <code>CL_CONTEXT_D3D11_DEVICE_KHR</code> mapped to
+the pointer of the Direct3D 11 device, alongside the
+<code>CL_CONTEXT_PLATFORM</code> property.</li>
+</ol>
+<h3 id="creating-shared-memory-objects">Creating Shared Memory
+Objects</h3>
+<p>Once the context is established, Direct3D resources can be wrapped
+into OpenCL <code>cl_mem</code> handles. The resources must be created
+in DirectX with appropriate flags (typically
+<code>D3D11_USAGE_DEFAULT</code>) to permit GPU-side sharing.</p>
+<ul>
+<li><strong>Vertex Buffers:</strong> An <code>ID3D11Buffer</code>
+representing vertex data is wrapped using
+<code>clCreateFromD3D11BufferKHR</code>. This returns a standard OpenCL
+1D buffer object. Inside the OpenCL kernel, this data can be modified as
+an array of primitives, structs, or vectors.</li>
+<li><strong>Textures:</strong> A 2D texture
+(<code>ID3D11Texture2D</code>) is wrapped using
+<code>clCreateFromD3D11Texture2DKHR</code>, while 3D textures use
+<code>clCreateFromD3D11Texture3DKHR</code>. OpenCL treats these as
+native image objects (<code>image2d_t</code> or <code>image3d_t</code>),
+enabling hardware-accelerated sampling, filtering, and normalized
+coordinate addressing.</li>
+</ul>
+<h3 id="synchronization-pipeline">Synchronization Pipeline</h3>
+<p>Because Direct3D and OpenCL use separate command queues and internal
+execution states, explicit synchronization is required to prevent race
+conditions. The data never leaves device VRAM; synchronization merely
+transfers execution ownership between the graphics and compute
+pipelines.</p>
+<ol type="1">
+<li><strong>Flush Direct3D:</strong> The Direct3D pipeline must flush
+its pending commands using <code>ID3D11DeviceContext::Flush</code> to
+ensure rendering operations on the target resources are completed.</li>
+<li><strong>Acquire Objects in OpenCL:</strong> The application calls
+<code>clEnqueueAcquireD3D11ObjectsKHR</code>, passing the target
+<code>cl_mem</code> handles. This creates an execution barrier, locking
+the resources for OpenCL usage.</li>
+<li><strong>Execute Kernels:</strong> Compute kernels are queued via
+<code>clEnqueueNDRangeKernel</code> to process or generate the vertex or
+texture data.</li>
+<li><strong>Release Objects to Direct3D:</strong> After compute
+operations are queued, <code>clEnqueueReleaseD3D11ObjectsKHR</code> is
+called to release ownership back to Direct3D.</li>
+<li><strong>Direct3D Rendering:</strong> Once the OpenCL command queue
+completes (or signals an event), Direct3D can bind the vertex buffer to
+the Input Assembler stage or the texture to a Pixel Shader for
+rendering.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

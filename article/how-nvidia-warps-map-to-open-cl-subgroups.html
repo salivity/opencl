@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How NVIDIA Warps Map to OpenCL Subgroups - opencl</title>
+    <meta name="description" content="Modern graphics processing units (GPUs) achieve high throughput by executing threads in lockstep batches using Single Instruction, Multiple Threads (SIMT) execution models. In NVIDIA’s proprietary CUDA ecosystem, this fundamental unit of execution is c">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-nvidia-warps-map-to-open-cl-subgroups">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How NVIDIA Warps Map to OpenCL Subgroups - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-nvidia-warps-map-to-open-cl-subgroups" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Modern graphics processing units (GPUs) achieve high throughput by executing threads in lockstep batches using Single Instruction, Multiple Threads (SIMT) execution models. In NVIDIA’s proprietary CUDA ecosystem, this fundamental unit of execution is c" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-nvidia-warps-map-to-opencl-subgroups">How NVIDIA Warps Map
+to OpenCL Subgroups</h1>
+<p>Modern graphics processing units (GPUs) achieve high throughput by
+executing threads in lockstep batches using Single Instruction, Multiple
+Threads (SIMT) execution models. In NVIDIA’s proprietary CUDA ecosystem,
+this fundamental unit of execution is called a <strong>warp</strong>,
+consisting of 32 parallel threads. In the vendor-neutral OpenCL
+framework, this concept maps directly to <strong>subgroups</strong> (or
+hardware wavefronts). Understanding the correspondence between NVIDIA
+warps and OpenCL execution constructs is critical for optimizing branch
+divergence, memory coalescing, and intra-group communications across
+parallel computing architectures.</p>
+<h3 id="architectural-terminology-alignment">Architectural Terminology
+Alignment</h3>
+<p>To understand how hardware dispatch maps across both APIs, it helps
+to correlate their fundamental hierarchical levels:</p>
+<ul>
+<li><strong>Work-Item vs. CUDA Thread:</strong> A single path of
+execution.</li>
+<li><strong>Subgroup vs. Warp:</strong> A hardware-level SIMD unit
+consisting of a fixed batch of threads executed in lockstep by a single
+compute unit scheduler.</li>
+<li><strong>Work-Group vs. Thread Block:</strong> A collection of
+work-items/threads executed on a single compute unit (Streaming
+Multiprocessor or SM in NVIDIA terms) sharing local memory.</li>
+<li><strong>NDRange vs. Grid:</strong> The global domain of execution
+across the entire GPU device.</li>
+</ul>
+<h3 id="the-subgroup-as-a-direct-warp-counterpart">The Subgroup as a
+Direct Warp Counterpart</h3>
+<p>In original OpenCL specifications (1.x), hardware-level execution
+units were deliberately abstracted away to preserve portability. The
+programmer was only exposed to work-items and work-groups. However,
+because modern GPU performance heavily depends on intra-SIMD execution,
+OpenCL introduced the subgroup abstraction—first as the vendor extension
+<code>cl_khr_subgroups</code> in OpenCL 2.0 and later as a core feature
+in OpenCL 2.1.</p>
+<p>When executing an OpenCL kernel on NVIDIA hardware, an OpenCL
+subgroup maps directly to a 32-thread warp:</p>
+<ol type="1">
+<li><strong>Fixed Size:</strong> On NVIDIA devices, the subgroup size
+reported by OpenCL queries (<code>get_sub_group_size()</code>) is
+consistently 32, matching the hardware warp size.</li>
+<li><strong>Linear Indexing:</strong> Work-items inside an OpenCL
+work-group are partitioned into subgroups linearly based on their local
+IDs. The first 32 work-items (indices 0 through 31 along the flattened
+work-group index space) form the first subgroup (warp), the next 32 form
+the second, and so on.</li>
+</ol>
+<h3 id="lockstep-execution-and-control-flow">Lockstep Execution and
+Control Flow</h3>
+<p>Just like an NVIDIA warp, an OpenCL subgroup shares an instruction
+pointer across all of its constituent work-items.</p>
+<ul>
+<li><strong>Divergence:</strong> When code branches conditionally
+(<code>if/else</code>), any conditional path that differs among
+work-items within the same subgroup causes the hardware to execute both
+paths serially, masking off inactive work-items. This warp divergence
+behavior in CUDA is functionally identical to subgroup divergence in
+OpenCL.</li>
+<li><strong>Synchronization:</strong> Instructions within a subgroup
+execute synchronously at the instruction-issue level. While barrier
+synchronization (<code>work_group_barrier</code>) is traditionally
+required across a whole work-group, OpenCL provides subgroup-level
+barriers (<code>sub_group_barrier</code>) that match CUDA’s intra-warp
+synchronization requirements (<code>__syncwarp()</code>).</li>
+</ul>
+<h3 id="intra-group-communication-and-primitives">Intra-Group
+Communication and Primitives</h3>
+<p>The direct relationship between warps and subgroups is most apparent
+when utilizing warp-level intrinsics:</p>
+<ul>
+<li><strong>Shuffle Operations:</strong> In CUDA, threads exchange
+register data directly without shared memory using instructions such as
+<code>__shfl_sync</code> and <code>__shfl_down_sync</code>. OpenCL
+exposes the exact same hardware capabilities through built-in subgroup
+functions such as <code>sub_group_shuffle()</code> and
+<code>sub_group_shuffle_down()</code>. On an NVIDIA target, the OpenCL
+compiler translates these functions directly to the hardware's native
+<code>SHFL</code> instructions.</li>
+<li><strong>Subgroup Reductions:</strong> High-performance reductions
+across a warp (e.g., using warp-level ballot or reduction primitives)
+are mapped to OpenCL's collective functions, such as
+<code>sub_group_reduce_add()</code> or
+<code>sub_group_all()</code>.</li>
+</ul>
+<h3 id="memory-coalescing-behavior">Memory Coalescing Behavior</h3>
+<p>Because an OpenCL subgroup maps physically to an NVIDIA warp, global
+memory access rules remain unchanged. When the 32 work-items in an
+OpenCL subgroup request consecutive 32-bit, 64-bit, or 128-bit words in
+global memory, the underlying memory controller combines these requests
+into a single aligned transaction. Structuring OpenCL memory access
+around 32-item subgroup boundaries achieves the identical memory
+coalescing benefits observed when tuning native CUDA code for warps.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aligning OpenCL Structs with Host Applications - opencl</title>
+    <meta name="description" content="Sharing user-defined structures between a C/C++ host and an OpenCL device frequently leads to memory corruption and invalid computations due to differences in struct alignment and packing. This article covers the fundamental alignment requirements of Ope">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/aligning-open-cl-structs-with-host-applications">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Aligning OpenCL Structs with Host Applications - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/aligning-open-cl-structs-with-host-applications" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Sharing user-defined structures between a C/C++ host and an OpenCL device frequently leads to memory corruption and invalid computations due to differences in struct alignment and packing. This article covers the fundamental alignment requirements of Ope" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="aligning-opencl-structs-with-host-applications">Aligning OpenCL
+Structs with Host Applications</h1>
+<p>Sharing user-defined structures between a C/C++ host and an OpenCL
+device frequently leads to memory corruption and invalid computations
+due to differences in struct alignment and packing. This article covers
+the fundamental alignment requirements of OpenCL C, why mismatches occur
+between host compilers and OpenCL compilers, and the standard techniques
+required to ensure both systems share an identical memory layout.</p>
+<h3 id="the-cause-of-struct-mismatches">The Cause of Struct
+Mismatches</h3>
+<p>Host C and C++ compilers follow target-specific Application Binary
+Interface (ABI) rules, typically aligning struct members to their
+natural scalar boundaries (e.g., 4 bytes for a 32-bit integer, 8 bytes
+for a 64-bit pointer or double).</p>
+<p>OpenCL C, however, enforces strict alignment rules defined by the
+OpenCL specification. In OpenCL, the alignment of any data type is equal
+to its size, with vector types aligning to the total size of the vector
+rounded up to the nearest power of two. For example, while a standard C
+struct containing three consecutive 4-byte floats occupies 12 bytes, an
+OpenCL <code>float3</code> type requires 16-byte alignment and occupies
+16 bytes in memory (equivalent to <code>float4</code>). If a host
+application defines a struct with three floats and maps it directly to a
+kernel expecting a <code>float3</code>, an immediate alignment offset
+occurs.</p>
+<h3 id="opencl-alignment-rules">OpenCL Alignment Rules</h3>
+<p>To match OpenCL expectations, user-defined structures must satisfy
+the following criteria:</p>
+<ul>
+<li><strong>Scalar Types:</strong> Must be aligned to their respective
+byte sizes (e.g., <code>cl_int</code> and <code>cl_float</code> require
+4-byte alignment; <code>cl_double</code> and <code>cl_long</code>
+require 8-byte alignment).</li>
+<li><strong>Vector Types:</strong> Two-component vectors (e.g.,
+<code>float2</code>) align to 8 bytes. Three- and four-component vectors
+(e.g., <code>float3</code>, <code>float4</code>) align to 16 bytes.
+Eight-component vectors align to 32 bytes, and sixteen-component vectors
+align to 64 bytes.</li>
+<li><strong>Overall Struct Alignment:</strong> The total size of the
+struct is padded to a multiple of its largest member's alignment
+requirement.</li>
+</ul>
+<h3 id="best-practices-to-prevent-packing-discrepancies">Best Practices
+to Prevent Packing Discrepancies</h3>
+<h4 id="1-use-the-khronos-host-types">1. Use the Khronos Host Types</h4>
+<p>Never use native C/C++ types (such as <code>int</code>,
+<code>long</code>, or <code>struct { float x, y, z; }</code>) to map to
+OpenCL types. Instead, include <code>&lt;CL/cl.h&gt;</code> and use the
+official host-side data types: <code>cl_int</code>,
+<code>cl_float</code>, <code>cl_float4</code>, etc. These types are
+pre-configured with the correct alignment macros for host compilers.</p>
+<h4 id="2-apply-explicit-alignment-attributes">2. Apply Explicit
+Alignment Attributes</h4>
+<p>Relying on implicit compiler padding often leads to bugs across
+different operating systems or toolchains. Explicitly define alignment
+using standard alignment specifiers:</p>
+<p>On the host (C++11 or GCC/Clang):</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> <span class="kw">alignas</span><span class="op">(</span><span class="dv">16</span><span class="op">)</span> Particle <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    cl_float4 position<span class="op">;</span> <span class="co">// 16-byte aligned</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    cl_float4 velocity<span class="op">;</span> <span class="co">// 16-byte aligned</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    cl_int    id<span class="op">;</span>       <span class="co">// 4 bytes</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    cl_float  mass<span class="op">;</span>     <span class="co">// 4 bytes</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    cl_char   pad<span class="op">[</span><span class="dv">8</span><span class="op">];</span>   <span class="co">// Explicit 8-byte padding to maintain 16-byte total alignment</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
+<p>Inside the OpenCL kernel:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">typedef</span> <span class="kw">struct</span> __attribute__<span class="op">((</span>aligned<span class="op">(</span><span class="dv">16</span><span class="op">)))</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    float4 position<span class="op">;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    float4 velocity<span class="op">;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span>    id<span class="op">;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span>  mass<span class="op">;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">char</span>   pad<span class="op">[</span><span class="dv">8</span><span class="op">];</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> Particle<span class="op">;</span></span></code></pre></div>
+<h4 id="3-order-members-by-decreasing-alignment-size">3. Order Members
+by Decreasing Alignment Size</h4>
+<p>Sort structure members starting with the largest alignment
+requirements down to the smallest:</p>
+<ol type="1">
+<li>64-byte vectors</li>
+<li>32-byte vectors</li>
+<li>16-byte types (<code>float4</code>, <code>float3</code>,
+<code>int4</code>)</li>
+<li>8-byte types (<code>double</code>, <code>long</code>,
+<code>float2</code>)</li>
+<li>4-byte types (<code>float</code>, <code>int</code>,
+<code>uint</code>)</li>
+<li>1- and 2-byte types (<code>char</code>, <code>short</code>)</li>
+</ol>
+<p>Ordering fields by decreasing size minimizes compiler-generated
+padding holes and ensures consistent memory layouts across different
+architectures.</p>
+<h4 id="4-avoid-__attribute__packed">4. Avoid
+<code>__attribute__((packed))</code></h4>
+<p>While packing a structure forces all padding to zero, it should
+generally be avoided in heterogeneous computing. Many GPU and
+accelerator hardware architectures do not support unaligned memory loads
+efficiently, leading to severe memory access penalties or kernel
+execution crashes. Manual padding to naturally aligned boundaries
+remains the safest and highest-performing approach.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

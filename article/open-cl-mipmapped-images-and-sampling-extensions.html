@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Mipmapped Images and Sampling Extensions - opencl</title>
+    <meta name="description" content="This article provides an overview of how mipmapped images operate within the OpenCL framework and outlines the specific extensions that enable mipmap sampling and manipulation. You will learn how OpenCL handles level-of-detail (LOD) texture chains, how h">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-mipmapped-images-and-sampling-extensions">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Mipmapped Images and Sampling Extensions - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-mipmapped-images-and-sampling-extensions" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article provides an overview of how mipmapped images operate within the OpenCL framework and outlines the specific extensions that enable mipmap sampling and manipulation. You will learn how OpenCL handles level-of-detail (LOD) texture chains, how h" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-mipmapped-images-and-sampling-extensions">OpenCL
+Mipmapped Images and Sampling Extensions</h1>
+<p>This article provides an overview of how mipmapped images operate
+within the OpenCL framework and outlines the specific extensions that
+enable mipmap sampling and manipulation. You will learn how OpenCL
+handles level-of-detail (LOD) texture chains, how host-side image
+descriptors configure mipmap pyramids, and how the OpenCL extension
+framework exposes explicit LOD and gradient-based sampling built-ins
+inside kernel code.</p>
+<h3 id="how-mipmapped-images-function-in-opencl">How Mipmapped Images
+Function in OpenCL</h3>
+<p>A mipmap consists of a pre-calculated sequence of images, each
+representing the same graphic at progressively lower resolutions. In
+OpenCL, mipmapped images reduce aliasing artifacts and optimize memory
+bandwidth by allowing the compute device to sample from the resolution
+level that most closely matches the sampling rate of the target geometry
+or compute grid.</p>
+<p>To utilize mipmaps on the host side, applications populate the
+<code>num_mip_levels</code> field within the <code>cl_image_desc</code>
+structure when invoking <code>clCreateImage</code>. A value greater than
+one instructs the OpenCL runtime to allocate memory for the full chain
+down to the 1x1 pixel base.</p>
+<p>Once created, the behavior of mipmap sampling is controlled by the
+sampler. In OpenCL, samplers configured for mipmapped images incorporate
+additional properties:</p>
+<ul>
+<li><strong>Mip Filter Mode</strong>: Dictates whether sampling selects
+the nearest mip level (<code>CL_FILTER_NEAREST</code>) or performs
+trilinear interpolation between adjacent levels
+(<code>CL_FILTER_LINEAR</code>).</li>
+<li><strong>LOD Clamps</strong>: Sampler properties can enforce minimum
+and maximum LOD bounds (<code>CL_SAMPLER_LOD_MIN</code> and
+<code>CL_SAMPLER_LOD_MAX</code>), restricting sampling to a specific
+subset of the mip hierarchy.</li>
+</ul>
+<p>When a kernel samples an image using a normalized coordinate, the
+hardware or software rasterizer calculates the rate of change of
+coordinates to automatically select the optimal mipmap level.</p>
+<h3 id="extensions-exposing-mipmap-level-sampling">Extensions Exposing
+Mipmap Level Sampling</h3>
+<p>Standard OpenCL 1.x does not support mipmapping in core profiles. To
+address this, the Khronos Group introduced dedicated extensions that
+were later integrated into OpenCL 2.0 core specifications.</p>
+<h4 id="1-cl_khr_mipmap_image">1. cl_khr_mipmap_image</h4>
+<p>The primary extension enabling mipmap functionality is
+<code>cl_khr_mipmap_image</code>. This extension exposes the capability
+to create, read, and query mipmapped 1D, 2D, and 3D images, as well as
+1D and 2D image arrays.</p>
+<p>Within OpenCL C kernels, this extension enables specialized built-in
+functions:</p>
+<ul>
+<li><strong>Explicit LOD Sampling</strong>: Kernels can override
+automatic level calculation by passing an explicit
+<code>float lod</code> parameter to the <code>read_image</code>
+functions (e.g.,
+<code>read_imagef(image, sampler, coord, lod)</code>).</li>
+<li><strong>Gradient-Based Sampling</strong>: Kernels can supply
+explicit coordinate gradients (partial derivatives <code>dx</code> and
+<code>dy</code>) via functions like
+<code>read_imagef(image, sampler, coord, dx, dy)</code>. This is
+essential for non-uniform flow control where automatic hardware
+derivation would fail or cause artifacts.</li>
+<li><strong>Level Queries</strong>: It exposes the
+<code>get_image_num_mip_levels(image)</code> built-in to query the total
+number of levels available in the texture chain directly from the
+kernel.</li>
+</ul>
+<h4 id="2-cl_khr_mipmap_image_writes">2. cl_khr_mipmap_image_writes</h4>
+<p>While <code>cl_khr_mipmap_image</code> provides read-only sampling
+capabilities, modifying specific mip levels from within a kernel
+requires the <code>cl_khr_mipmap_image_writes</code> extension.</p>
+<p>This extension introduces variants of <code>write_image</code>
+functions that accept an integer <code>lod</code> argument (e.g.,
+<code>write_imagef(image, coord, lod, color)</code>). This allows
+compute kernels to generate downsampled levels dynamically on the device
+without having to copy intermediate buffers back to the host.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

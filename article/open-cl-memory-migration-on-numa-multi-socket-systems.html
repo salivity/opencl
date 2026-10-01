@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Memory Migration on NUMA Multi-Socket Systems - opencl</title>
+    <meta name="description" content="In multi-socket Non-Uniform Memory Access (NUMA) systems, OpenCL memory migration dictates how data buffers and Shared Virtual Memory (SVM) regions move between distinct physical memory domains and compute devices. Because memory access latency and throu">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-memory-migration-on-numa-multi-socket-systems">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Memory Migration on NUMA Multi-Socket Systems - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-memory-migration-on-numa-multi-socket-systems" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In multi-socket Non-Uniform Memory Access (NUMA) systems, OpenCL memory migration dictates how data buffers and Shared Virtual Memory (SVM) regions move between distinct physical memory domains and compute devices. Because memory access latency and throu" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-memory-migration-on-numa-multi-socket-systems">OpenCL
+Memory Migration on NUMA Multi-Socket Systems</h1>
+<p>In multi-socket Non-Uniform Memory Access (NUMA) systems, OpenCL
+memory migration dictates how data buffers and Shared Virtual Memory
+(SVM) regions move between distinct physical memory domains and compute
+devices. Because memory access latency and throughput vary significantly
+depending on whether a CPU socket or PCIe accelerator accesses local or
+remote RAM, OpenCL memory migration relies on explicit runtime
+directives, operating system page-fault handling, and underlying
+interconnects to ensure high-performance execution.</p>
+<h3 id="numa-topologies-and-the-opencl-memory-model">NUMA Topologies and
+the OpenCL Memory Model</h3>
+<p>A multi-socket system features distinct CPU sockets, each directly
+linked to its own physical memory channels (a NUMA node). Sockets
+communicate over high-speed coherent interconnects, such as Intel Ultra
+Path Interconnect (UPI) or AMD Infinity Fabric.</p>
+<p>When OpenCL operates on such a platform, compute devices generally
+fall into two categories:</p>
+<ol type="1">
+<li><strong>CPU Devices:</strong> OpenCL exposes host CPU cores as
+compute units. Kernels execute directly on the host processor across one
+or multiple sockets.</li>
+<li><strong>Discrete Accelerators (GPUs, FPGAs):</strong> Devices attach
+via PCIe lanes physically routed to the PCIe controller of a specific
+CPU socket (the "local" NUMA node for that peripheral).</li>
+</ol>
+<p>The behavior of memory migration depends on whether buffers are
+traditional discrete memory objects (<code>cl_mem</code>) or Shared
+Virtual Memory (SVM).</p>
+<h3
+id="explicit-buffer-migration-via-clenqueuemigratememobjects">Explicit
+Buffer Migration via <code>clEnqueueMigrateMemObjects</code></h3>
+<p>The primary OpenCL API mechanism for controlling memory placement is
+<code>clEnqueueMigrateMemObjects</code>. This command provides a hint or
+explicit instruction to the OpenCL runtime to migrate memory objects to
+the device associated with an OpenCL command queue prior to kernel
+execution.</p>
+<ul>
+<li><strong>Between Host and Discrete Devices:</strong> When migrating a
+buffer to a discrete accelerator, the runtime initiates direct memory
+access (DMA) transfers. If the buffer currently resides in the memory of
+the remote CPU socket, the DMA transfer must traverse the inter-socket
+interconnect to reach the PCIe controller attached to the GPU. This
+consumes inter-socket bandwidth and increases transfer latency compared
+to transfers originating from local NUMA memory.</li>
+<li><strong>Between CPU NUMA Nodes:</strong> If multiple OpenCL
+sub-devices represent different CPU sockets, issuing an explicit
+migration command signals the runtime to shift the backing host pages to
+the target socket’s local memory pool.</li>
+</ul>
+<h3 id="shared-virtual-memory-svm-and-page-migration">Shared Virtual
+Memory (SVM) and Page Migration</h3>
+<p>OpenCL 2.0 and later support Shared Virtual Memory, which enables
+host and devices to share a unified address space. SVM migration
+behavior differs based on the granularity supported:</p>
+<ul>
+<li><strong>Coarse-Grained Buffer SVM:</strong> Pointers are shared, but
+updates require explicit synchronization via
+<code>clEnqueueMapBuffer</code> and <code>clEnqueueUnmapMemObject</code>
+(or explicit migration calls). Data does not dynamically shift between
+NUMA nodes; it remains anchored to the allocating socket’s memory unless
+explicitly moved by the driver.</li>
+<li><strong>Fine-Grained Buffer/System SVM:</strong> Host threads and
+OpenCL devices can read and write to the same memory concurrently
+without manual synchronization markers. In platforms supporting hardware
+cache coherency and Heterogeneous Memory Management (HMM), page
+migration can happen on demand. When a compute thread on Socket 1 writes
+to a page physically hosted on Socket 0, the operating system kernel and
+OpenCL driver intercept the page fault and either service the request
+over the inter-socket link or migrate the physical page directly to
+Socket 1.</li>
+</ul>
+<h3 id="impact-of-the-os-first-touch-policy">Impact of the OS
+"First-Touch" Policy</h3>
+<p>Most operating systems (such as Linux) implement a "First-Touch"
+allocation policy for host memory. When an application allocates host
+memory via <code>clCreateBuffer</code> with
+<code>CL_MEM_ALLOC_HOST_PTR</code> or standard system allocators,
+physical pages are not allocated until the memory is first accessed.</p>
+<ul>
+<li>If the host setup thread initializes the buffer on <strong>Socket
+0</strong>, all physical pages map to Socket 0's NUMA node.</li>
+<li>If an OpenCL CPU queue subsequently executes the workload on compute
+units mapped to <strong>Socket 1</strong>, all memory read/write
+requests must cross the CPU interconnect.</li>
+<li>Without explicit page migration, this cross-socket access introduces
+substantial latency and degrades throughput.</li>
+</ul>
+<h3 id="pcie-device-affinity-and-peer-to-peer-traversal">PCIe Device
+Affinity and Peer-to-Peer Traversal</h3>
+<p>For discrete devices, every PCIe slot is wired to a specific host
+socket. When migrating memory to an accelerator:</p>
+<ol type="1">
+<li><strong>Local Node Transfer:</strong> If the OpenCL buffer resides
+on the NUMA node directly controlling the device's PCIe root complex,
+data moves straight through the local memory bus into PCIe lanes at peak
+line rate.</li>
+<li><strong>Remote Node Transfer:</strong> If data resides on a remote
+NUMA node, transfers must first cross the inter-socket link to reach the
+host socket hosting the PCIe root complex. This path can introduce
+transfer bottlenecks, especially when multiple accelerators
+simultaneously pull data from remote nodes.</li>
+</ol>
+<h3 id="performance-considerations">Performance Considerations</h3>
+<p>Optimizing OpenCL memory migration on NUMA architectures requires
+mitigating inter-socket overhead through deliberate placement:</p>
+<ul>
+<li><strong>NUMA Binding:</strong> Pin OpenCL host threads to the NUMA
+node topologically closest to the target device or PCIe controller using
+OS utilities (e.g., <code>numactl</code>) or thread-affinity APIs.</li>
+<li><strong>Proactive Migration:</strong> Use
+<code>clEnqueueMigrateMemObjects</code> early in the execution pipeline
+to overlap page transfer with ongoing computation, preventing on-demand
+page faults during kernel execution.</li>
+<li><strong>Partitioning:</strong> When targeting multi-socket CPUs via
+OpenCL, partition the device into sub-devices per socket
+(<code>CL_DEVICE_PARTITION_BY_AFFINITY_DOMAIN</code>) and manage
+separate, locally allocated memory pools for each partition.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

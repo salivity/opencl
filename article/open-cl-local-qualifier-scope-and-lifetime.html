@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL __local Qualifier Scope and Lifetime - opencl</title>
+    <meta name="description" content="The local (or local) address space qualifier in OpenCL designates variables that reside in a device's high-speed, on-chip shared memory. Applying this qualifier alters standard C storage behavior, binding the variable's memory and state to a specific wor">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-local-qualifier-scope-and-lifetime">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL __local Qualifier Scope and Lifetime - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-local-qualifier-scope-and-lifetime" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The local (or local) address space qualifier in OpenCL designates variables that reside in a device's high-speed, on-chip shared memory. Applying this qualifier alters standard C storage behavior, binding the variable's memory and state to a specific wor" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-__local-qualifier-scope-and-lifetime">OpenCL __local
+Qualifier Scope and Lifetime</h1>
+<p>The <code>__local</code> (or <code>local</code>) address space
+qualifier in OpenCL designates variables that reside in a device's
+high-speed, on-chip shared memory. Applying this qualifier alters
+standard C storage behavior, binding the variable's memory and state to
+a specific work-group rather than an individual thread or the entire
+compute device. This article details how the <code>__local</code>
+qualifier dictates variable visibility (scope), persistence (lifetime),
+allocation constraints, and synchronization requirements during kernel
+execution.</p>
+<h2 id="variable-scope-with-__local">Variable Scope with
+<code>__local</code></h2>
+<p>In OpenCL, the scope of a <code>__local</code> variable defines where
+that identifier can be referenced in code and which threads have access
+to its underlying data:</p>
+<ul>
+<li><strong>Syntactic Scope:</strong> When declared inside a kernel
+function, a <code>__local</code> variable follows standard C block
+scoping rules. The identifier is only visible within the block or
+function in which it is declared. It cannot be declared at the global
+program scope outside of kernel functions.</li>
+<li><strong>Execution Scope:</strong> Even though the variable's name
+may be restricted to a specific block, the underlying memory is shared
+across <strong>all work-items within the same work-group</strong>. Any
+work-item in that work-group can read from or write to that memory
+location, provided it has access to the variable or a pointer
+referencing it.</li>
+<li><strong>Kernel Argument Scope:</strong> When <code>__local</code> is
+applied to a pointer argument of a kernel function (e.g.,
+<code>__local float *shared_data</code>), the variable points to a block
+of local memory allocated dynamically by the host. In this scenario, the
+variable is visible throughout the entire kernel body to all work-items
+in the work-group.</li>
+</ul>
+<h2 id="variable-lifetime-with-__local">Variable Lifetime with
+<code>__local</code></h2>
+<p>The lifetime of a <code>__local</code> variable is strictly tied to
+the life cycle of the work-group executing the kernel:</p>
+<ul>
+<li><strong>Creation:</strong> Memory for a <code>__local</code>
+variable is allocated when a work-group begins executing on a compute
+unit.</li>
+<li><strong>Persistence:</strong> The data stored in
+<code>__local</code> variables persists for the duration of that
+specific work-group's execution. Multiple work-items within the group
+can repeatedly read and write to this shared storage during the kernel
+run.</li>
+<li><strong>Destruction:</strong> The memory is released as soon as all
+work-items in the work-group finish execution. Data does not persist
+across successive work-groups, nor does it persist across different
+kernel executions.</li>
+</ul>
+<h2 id="declaration-rules-and-restrictions">Declaration Rules and
+Restrictions</h2>
+<p>Using the <code>__local</code> qualifier introduces specific compiler
+and runtime restrictions:</p>
+<ol type="1">
+<li><strong>No Direct Initialization:</strong> Local variables declared
+inside a kernel cannot be initialized at the point of declaration (e.g.,
+<code>__local int counter = 0;</code> is invalid). Initialization must
+occur dynamically through explicit code executed by one or more
+work-items.</li>
+<li><strong>Dynamic vs. Static Allocation:</strong>
+<ul>
+<li><strong>Static allocation:</strong> Declared inside the kernel body
+with a fixed size known at compile time (e.g.,
+<code>__local float buffer[256];</code>).</li>
+<li><strong>Dynamic allocation:</strong> Declared as a kernel parameter
+and allocated from the host application using
+<code>clSetKernelArg</code> with a <code>NULL</code> pointer and the
+desired byte size.</li>
+</ul></li>
+</ol>
+<h2 id="synchronization-and-memory-consistency">Synchronization and
+Memory Consistency</h2>
+<p>Because the lifetime and scope of <code>__local</code> variables span
+an entire work-group, concurrent read and write operations by multiple
+work-items can cause race conditions. OpenCL does not guarantee
+automatic cache coherency or execution order among work-items.</p>
+<p>To safely use <code>__local</code> data across work-items, you must
+use work-group barriers:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span></code></pre></div>
+<p>This barrier ensures that all work-items within the work-group reach
+the same point in execution and that all reads and writes to local
+memory are visible to all work-items before execution proceeds.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

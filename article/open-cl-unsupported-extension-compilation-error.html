@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Unsupported Extension Compilation Error - opencl</title>
+    <meta name="description" content="When an OpenCL source file requires an extension not supported by the compiling target device, the OpenCL runtime returns the CLBUILDPROGRAMFAILURE error code. This error occurs during the runtime compilation step via functions such as clBuildProgram or">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-unsupported-extension-compilation-error">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Unsupported Extension Compilation Error - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-unsupported-extension-compilation-error" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="When an OpenCL source file requires an extension not supported by the compiling target device, the OpenCL runtime returns the CLBUILDPROGRAMFAILURE error code. This error occurs during the runtime compilation step via functions such as clBuildProgram or" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-unsupported-extension-compilation-error">OpenCL
+Unsupported Extension Compilation Error</h1>
+<p>When an OpenCL source file requires an extension not supported by the
+compiling target device, the OpenCL runtime returns the
+<code>CL_BUILD_PROGRAM_FAILURE</code> error code. This error occurs
+during the runtime compilation step via functions such as
+<code>clBuildProgram</code> or <code>clCompileProgram</code>. Alongside
+this return code, the OpenCL compiler writes specific diagnostic
+messages into the program's build log indicating that the requested
+extension is unavailable.</p>
+<h3 id="the-runtime-error-code">The Runtime Error Code</h3>
+<p>At the host API level, the attempt to compile or build an invalid
+program does not raise an exception in C; instead, it returns an integer
+error code:</p>
+<ul>
+<li><strong>Error Code:</strong>
+<code>CL_BUILD_PROGRAM_FAILURE</code></li>
+<li><strong>Numeric Value:</strong> <code>-11</code></li>
+</ul>
+<p>This error is returned directly by <code>clBuildProgram</code>,
+<code>clCompileProgram</code>, or <code>clLinkProgram</code> when the
+driver’s internal compiler encounters instructions or pragma directives
+that the target hardware or driver cannot satisfy.</p>
+<h3 id="how-opencl-c-handles-extension-directives">How OpenCL C Handles
+Extension Directives</h3>
+<p>OpenCL C kernels declare extensions using the
+<code>#pragma OPENCL EXTENSION</code> preprocessor directive. The
+behavior depends on the behavior tag used:</p>
+<ol type="1">
+<li><strong><code>#pragma OPENCL EXTENSION &lt;extension_name&gt; : require</code></strong><br />
+If the target compiler does not support the extension, compilation fails
+immediately with a compiler error in the build log, triggering
+<code>CL_BUILD_PROGRAM_FAILURE</code> at runtime.</li>
+<li><strong><code>#pragma OPENCL EXTENSION &lt;extension_name&gt; : enable</code></strong><br />
+If the target compiler does not support the extension, it emits a
+compiler warning. However, if the source code subsequently uses types,
+built-in functions, or features specific to that unsupported extension,
+compilation will fail with syntax or unresolved identifier errors, also
+culminating in <code>CL_BUILD_PROGRAM_FAILURE</code>.</li>
+</ol>
+<h3 id="inspecting-the-build-log">Inspecting the Build Log</h3>
+<p>To view the specific error message generated by the compiler, you
+must query the program build log using
+<code>clGetProgramBuildInfo</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> log_size<span class="op">;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>clGetProgramBuildInfo<span class="op">(</span>program<span class="op">,</span> device_id<span class="op">,</span> CL_PROGRAM_BUILD_LOG<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> NULL<span class="op">,</span> <span class="op">&amp;</span>log_size<span class="op">);</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="dt">char</span> <span class="op">*</span>log <span class="op">=</span> <span class="op">(</span><span class="dt">char</span> <span class="op">*)</span>malloc<span class="op">(</span>log_size<span class="op">);</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>clGetProgramBuildInfo<span class="op">(</span>program<span class="op">,</span> device_id<span class="op">,</span> CL_PROGRAM_BUILD_LOG<span class="op">,</span> log_size<span class="op">,</span> log<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>printf<span class="op">(</span><span class="st">&quot;Build Log:</span><span class="sc">\n%s\n</span><span class="st">&quot;</span><span class="op">,</span> log<span class="op">);</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>free<span class="op">(</span>log<span class="op">);</span></span></code></pre></div>
+<p>The output typically contains a diagnostic line such as:
+<code>error: OpenCL extension '&lt;extension_name&gt;' is unknown or unsupported</code></p>
+<h3 id="how-to-prevent-extension-errors">How to Prevent Extension
+Errors</h3>
+<p>To prevent build failures, perform pre-compilation checks and use
+conditional compilation:</p>
+<ul>
+<li><strong>Query Device Capabilities:</strong> Before compiling, query
+the host API using <code>clGetDeviceInfo</code> with the
+<code>CL_DEVICE_EXTENSIONS</code> flag to verify that the required
+extension string is present for the target device.</li>
+<li><strong>Conditional Kernel Code:</strong> Guard extension usage
+within the kernel source using preprocessor checks:
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#ifdef &lt;extension_name&gt;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="pp">#pragma OPENCL EXTENSION &lt;extension_name&gt; : enable</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Extension-specific implementation</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="pp">#else</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Fallback implementation or standard OpenCL code</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="pp">#endif</span></span></code></pre></div></li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

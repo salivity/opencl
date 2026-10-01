@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Decompile OpenCL SPIR-V Modules to Source Code - opencl</title>
+    <meta name="description" content="SPIR-V serves as the standard binary intermediate representation for parallel compute and graphics, utilized heavily in OpenCL and Vulkan ecosystems. Recovering high-level source code from an OpenCL SPIR-V binary is essential for debugging, performance a">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/decompile-open-cl-spir-v-modules-to-source-code">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Decompile OpenCL SPIR-V Modules to Source Code - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/decompile-open-cl-spir-v-modules-to-source-code" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="SPIR-V serves as the standard binary intermediate representation for parallel compute and graphics, utilized heavily in OpenCL and Vulkan ecosystems. Recovering high-level source code from an OpenCL SPIR-V binary is essential for debugging, performance a" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="decompile-opencl-spir-v-modules-to-source-code">Decompile OpenCL
+SPIR-V Modules to Source Code</h1>
+<p>SPIR-V serves as the standard binary intermediate representation for
+parallel compute and graphics, utilized heavily in OpenCL and Vulkan
+ecosystems. Recovering high-level source code from an OpenCL SPIR-V
+binary is essential for debugging, performance analysis, and security
+auditing. While translating low-level bytecode back into fully formed
+OpenCL C presents challenges due to lost metadata during compilation,
+several specialized tools, disassemblers, and translation layers make it
+possible to decompile or disassemble OpenCL SPIR-V modules into readable
+formats.</p>
+<h3 id="spirv-cross">SPIRV-Cross</h3>
+<p>Maintained under the Khronos Group umbrella,
+<strong>SPIRV-Cross</strong> is one of the most widely used tools for
+parsing and converting SPIR-V binaries. Its primary design goal is
+cross-compilation between shader languages. While its primary targets
+are GLSL, MSL (Metal Shading Language), HLSL, and raw C++, it can
+process compute shaders originating from OpenCL kernels.</p>
+<ul>
+<li><strong>Capabilities:</strong> Reconstructs complex control flow,
+optimizes variable scopes, and translates intermediate compute
+representations into standard high-level shader languages or C++ source
+code.</li>
+<li><strong>Use Case:</strong> Best suited when you need syntactically
+valid high-level source code to port or inspect compute pipeline
+logic.</li>
+</ul>
+<h3 id="spirv-tools-spirv-dis">SPIRV-Tools (spirv-dis)</h3>
+<p>The official <strong>SPIRV-Tools</strong> suite includes
+<code>spirv-dis</code>, the standard disassembler for SPIR-V modules.
+Rather than attempting to reconstruct high-level C-like syntax,
+<code>spirv-dis</code> converts the binary representation into
+human-readable SPIR-V text assembly.</p>
+<ul>
+<li><strong>Capabilities:</strong> Produces exact,
+instruction-by-instruction text representations preserving all opcodes,
+types, and embedded debug symbols (such as <code>OpName</code> and
+<code>OpLine</code> if unstripped).</li>
+<li><strong>Use Case:</strong> Ideal when high-fidelity instruction
+analysis is required without the artifacts or potential syntax
+mismatches introduced by high-level decompiler heuristics.</li>
+</ul>
+<h3 id="llvm-spir-v-translator-llvm-spirv">LLVM SPIR-V Translator
+(llvm-spirv)</h3>
+<p>OpenCL drivers heavily integrate LLVM for kernel compilation. The
+<strong>LLVM SPIR-V Translator</strong> acts as a bi-directional
+translation layer between LLVM Intermediate Representation (LLVM IR) and
+SPIR-V.</p>
+<ul>
+<li><strong>Capabilities:</strong> Using the command-line flag
+<code>-r</code>, the tool reverses the translation, converting an input
+SPIR-V module back into LLVM bitcode (<code>.bc</code>) or
+human-readable LLVM IR (<code>.ll</code>).</li>
+<li><strong>Integration with Decompilers:</strong> Once converted back
+to LLVM IR, standard LLVM-based decompilers (such as
+<code>llvm-cbe</code> for C backend reconstruction) or static analyzers
+can be applied to generate C-like source code.</li>
+</ul>
+<h3 id="general-purpose-reverse-engineering-frameworks">General-Purpose
+Reverse Engineering Frameworks</h3>
+<p>Dedicated binary analysis suites offer extensible support for parsing
+and decompiling SPIR-V binaries:</p>
+<ul>
+<li><strong>Ghidra with SPIR-V Extensions:</strong> Community plugins
+add SPIR-V loader and processor definitions to the NSA’s open-source
+Ghidra framework. This allows Ghidra's decompiler engine to generate
+pseudocode approximations of compute kernels.</li>
+<li><strong>IDA Pro:</strong> Third-party loaders and processor modules
+exist for IDA Pro, enabling disassembling and control-flow graph (CFG)
+mapping for OpenCL compute binaries.</li>
+</ul>
+<h3 id="practical-limitations-of-spir-v-decompilation">Practical
+Limitations of SPIR-V Decompilation</h3>
+<p>When decompiling OpenCL SPIR-V back to source code, several
+constraints apply:</p>
+<ol type="1">
+<li><strong>Stripped Metadata:</strong> Unless the binary was compiled
+with debug flags enabled, high-level identifiers (kernel argument names,
+variable names, and comments) are permanently discarded during the
+initial compilation phase.</li>
+<li><strong>Memory Layout and Pointers:</strong> OpenCL makes specific
+use of address spaces (such as <code>__global</code>,
+<code>__local</code>, and <code>__constant</code>). Decompilers may
+translate these as raw pointers or generic memory offsets rather than
+native OpenCL address space qualifiers.</li>
+<li><strong>Structured Control Flow:</strong> OpenCL kernels containing
+complex divergence or unstructured loops might decompile into heavily
+nested conditional statements or explicit <code>goto</code> blocks
+rather than the original loops.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

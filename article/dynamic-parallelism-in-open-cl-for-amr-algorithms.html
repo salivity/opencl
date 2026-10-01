@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Parallelism in OpenCL for AMR Algorithms - opencl</title>
+    <meta name="description" content="Adaptive Mesh Refinement (AMR) is a critical numerical method used to dynamically allocate computational resolution to regions of high interest, such as shock waves, turbulence, or boundary layers, while leaving uniform areas coarse. Traditionally, imple">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/dynamic-parallelism-in-open-cl-for-amr-algorithms">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Dynamic Parallelism in OpenCL for AMR Algorithms - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/dynamic-parallelism-in-open-cl-for-amr-algorithms" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Adaptive Mesh Refinement (AMR) is a critical numerical method used to dynamically allocate computational resolution to regions of high interest, such as shock waves, turbulence, or boundary layers, while leaving uniform areas coarse. Traditionally, imple" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="dynamic-parallelism-in-opencl-for-amr-algorithms">Dynamic
+Parallelism in OpenCL for AMR Algorithms</h1>
+<p>Adaptive Mesh Refinement (AMR) is a critical numerical method used to
+dynamically allocate computational resolution to regions of high
+interest, such as shock waves, turbulence, or boundary layers, while
+leaving uniform areas coarse. Traditionally, implementing AMR on GPUs
+suffered from massive latency penalties caused by constant
+synchronization and data transfer between the host CPU and the device.
+Dynamic parallelism in OpenCL solves this bottleneck by allowing GPU
+compute kernels to launch child kernels directly on the device without
+CPU intervention. This article examines how OpenCL’s device-side kernel
+enqueuing optimizes AMR workflows by eliminating host roundtrips,
+maximizing resource utilization, and enabling fine-grained, data-driven
+load balancing.</p>
+<h3 id="the-host-device-bottleneck-in-traditional-gpu-amr">The
+Host-Device Bottleneck in Traditional GPU AMR</h3>
+<p>In standard GPU implementations, the CPU acts as the orchestrator.
+When an AMR algorithm identifies a region requiring sub-grid refinement,
+it must:</p>
+<ol type="1">
+<li>Flag the target cells during a GPU compute pass.</li>
+<li>Read the flagged refinement criteria back to the CPU host.</li>
+<li>Compute the new sub-grid topology and offset arrays on the CPU.</li>
+<li>Launch separate, smaller GPU kernels tailored to the newly refined
+sub-cells.</li>
+</ol>
+<p>This process introduces severe performance degradations. The
+continuous ping-pong between the host and device generates high PCI-e
+bus latency, interrupts the GPU execution pipeline, and causes host-side
+thread serialization. As the mesh dynamically deepens into finer levels
+of refinement, the overhead of kernel launch commands from the host
+often outpaces the actual mathematical execution time.</p>
+<h3 id="how-opencl-dynamic-parallelism-works">How OpenCL Dynamic
+Parallelism Works</h3>
+<p>OpenCL dynamic parallelism—introduced through device-side enqueue
+capabilities—allows a running work-item to query runtime conditions and
+directly enqueue new compute commands into an on-device queue.</p>
+<p>In the context of AMR, a parent kernel executes over a coarse grid.
+If an individual work-item detects a physical gradient exceeding a
+predefined threshold (such as a steep pressure or temperature
+differential), that specific thread can directly spawn a nested child
+kernel configured with a finer grid resolution. The child kernel
+executes exclusively on the data domain associated with that local cell,
+entirely bypassing the CPU.</p>
+<h3 id="elimination-of-host-synchronization-and-latency">Elimination of
+Host Synchronization and Latency</h3>
+<p>By delegating refinement decisions directly to the hardware
+processing the data, dynamic parallelism eliminates host-device
+synchronization barriers. The entire refinement lifecycle—detection,
+allocation, computation of fine-grid physics, and aggregation back to
+the coarse mesh—occurs on the accelerator. Removing the host from the
+critical execution path reduces launch overhead from several
+microseconds per host-side launch to near-instantaneous hardware
+scheduling on the device.</p>
+<h3 id="optimal-compute-and-memory-utilization">Optimal Compute and
+Memory Utilization</h3>
+<p>AMR workflows are inherently sparse; only a fraction of the
+computational domain requires maximum resolution at any given time step.
+Without dynamic parallelism, developers often resort to uniform
+over-refinement or padding to keep kernel launch counts manageable from
+the host, which wastes memory bandwidth and floating-point units on
+uninteresting regions.</p>
+<p>Device-side kernel launches ensure that high-density thread blocks
+are provisioned strictly where numerical complexity demands them. Coarse
+cells execute lightweight kernels, while localized nested kernels
+allocate hardware registers and local scratchpad memory dynamically.
+This results in:</p>
+<ul>
+<li><strong>Reduced Memory Footprint:</strong> Intermediate sub-grid
+states can be allocated and discarded within device memory pools without
+leaving global VRAM.</li>
+<li><strong>Higher Compute Density:</strong> Hardware compute units are
+not locked up processing trivial empty space at uniform maximum
+resolution.</li>
+</ul>
+<h3 id="real-time-load-balancing-for-complex-geometries">Real-Time Load
+Balancing for Complex Geometries</h3>
+<p>Load balancing is notoriously difficult in multi-scale AMR due to
+unpredictable spatial movement of features (e.g., crack propagation in
+solid mechanics or combustion fronts in fluid dynamics). OpenCL dynamic
+parallelism handles load distribution hierarchically.</p>
+<p>The parent grid processes predictable, large-scale structures while
+fine-grained irregular workloads are broken down into child work-groups
+scheduled by the GPU's internal hardware scheduler. The hardware
+naturally prioritizes active compute paths, hiding execution latency
+behind available coarse-grid work-items. Consequently, irregular,
+non-conforming mesh boundaries no longer stall the execution pipeline,
+leading to scalable, highly localized numerical simulations.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

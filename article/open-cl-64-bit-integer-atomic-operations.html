@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL 64-Bit Integer Atomic Operations - opencl</title>
+    <meta name="description" content="In OpenCL, atomic read-modify-write (RMW) operations on 64-bit integers allow multiple work-items to safely update shared 64-bit data in global or local memory without race conditions. While 32-bit atomic operations are mandatory across most standard Ope">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-64-bit-integer-atomic-operations">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL 64-Bit Integer Atomic Operations - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-64-bit-integer-atomic-operations" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, atomic read-modify-write (RMW) operations on 64-bit integers allow multiple work-items to safely update shared 64-bit data in global or local memory without race conditions. While 32-bit atomic operations are mandatory across most standard Ope" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-64-bit-integer-atomic-operations">OpenCL 64-Bit Integer
+Atomic Operations</h1>
+<p>In OpenCL, atomic read-modify-write (RMW) operations on 64-bit
+integers allow multiple work-items to safely update shared 64-bit data
+in global or local memory without race conditions. While 32-bit atomic
+operations are mandatory across most standard OpenCL implementations,
+64-bit integer atomics are historically treated as optional features
+that depend on specific hardware capabilities, API versions, and
+extension support. OpenCL handles these operations through dedicated
+built-in functions, explicit memory orderings, and hardware-level atomic
+instructions or compare-and-swap emulation loops.</p>
+<h3 id="standard-evolution-and-extension-support">Standard Evolution and
+Extension Support</h3>
+<p>In OpenCL 1.x, atomic operations on 64-bit integers
+(<code>long</code> and <code>ulong</code>) are not part of the core
+specification. Instead, they require explicit extension support declared
+in the kernel:</p>
+<ul>
+<li><strong><code>cl_khr_int64_base_atomics</code></strong>: Enables
+fundamental 64-bit operations, including <code>atom_add</code>,
+<code>atom_sub</code>, <code>atom_xchg</code>, <code>atom_inc</code>,
+<code>atom_dec</code>, and <code>atom_cmpxchg</code>.</li>
+<li><strong><code>cl_khr_int64_extended_atomics</code></strong>: Enables
+bitwise and comparative operations, including <code>atom_min</code>,
+<code>atom_max</code>, <code>atom_and</code>, <code>atom_or</code>, and
+<code>atom_xor</code>.</li>
+</ul>
+<p>To use these in OpenCL 1.x kernels, the extension must be enabled
+using the pragma directive:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#pragma OPENCL EXTENSION cl_khr_int64_extended_atomics : enable</span></span></code></pre></div>
+<p>Starting with OpenCL 2.0, atomic operations were overhauled to align
+with the C11 memory model. OpenCL 2.0 introduced the
+<code>atomic_long</code> and <code>atomic_ulong</code> types, along with
+unified atomic functions (e.g., <code>atomic_fetch_add</code>,
+<code>atomic_fetch_or</code>). In OpenCL 2.x and OpenCL 3.0, 64-bit
+atomics remain optional and are guarded by the feature test macros
+<code>__opencl_c_int64_base_atomics</code> and
+<code>__opencl_c_int64_extended_atomics</code>.</p>
+<h3 id="memory-consistency-and-memory-scopes">Memory Consistency and
+Memory Scopes</h3>
+<p>In modern OpenCL (2.0 and later), 64-bit atomic RMW operations take
+memory order and memory scope arguments to define visibility across the
+compute hierarchy:</p>
+<ul>
+<li><strong>Memory Order</strong>: Dictates synchronization constraints.
+Options include <code>memory_order_relaxed</code>,
+<code>memory_order_acquire</code>, <code>memory_order_release</code>,
+<code>memory_order_acq_rel</code>, and
+<code>memory_order_seq_cst</code>.</li>
+<li><strong>Memory Scope</strong>: Determines which work-items observe
+the synchronization. Options include:
+<ul>
+<li><code>memory_scope_work_group</code>: Synchronization applies only
+within the local work-group.</li>
+<li><code>memory_scope_device</code>: Synchronization applies across all
+work-items on the device.</li>
+<li><code>memory_scope_all_svm_devices</code>: Synchronization applies
+across both the host CPU and OpenCL devices sharing virtual memory.</li>
+</ul></li>
+</ul>
+<p>A typical OpenCL 2.0+ RMW operation using explicit scopes looks
+like:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>atomic_fetch_add_explicit<span class="op">(</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">(</span><span class="dt">volatile</span> __global atomic_long <span class="op">*)</span>ptr<span class="op">,</span> </span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    value<span class="op">,</span> </span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    memory_order_relaxed<span class="op">,</span> </span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    memory_scope_device</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<h3 id="hardware-execution-mechanics">Hardware Execution Mechanics</h3>
+<p>OpenCL runtimes and device drivers translate 64-bit atomic functions
+into machine-level instructions using two primary approaches:</p>
+<ol type="1">
+<li><strong>Native Hardware Atomics</strong>: Modern GPUs and discrete
+accelerators with native 64-bit execution units directly execute 64-bit
+atomic memory instructions (such as native atomic addition or exchange
+at the memory controller or L2 cache level). This ensures minimal
+overhead and non-blocking execution.</li>
+<li><strong>Compare-And-Swap (CAS) Loops</strong>: If the target
+hardware does not have dedicated functional units for complex 64-bit
+operations (like <code>atomic_fetch_max</code> or bitwise operations),
+the OpenCL compiler synthesizes the operation using an atomic
+compare-and-exchange loop (<code>atomic_compare_exchange_weak</code> or
+<code>atomic_compare_exchange_strong</code>). The loop continuously
+reads the memory address, computes the operation locally, and attempts
+to write the result back until the CAS instruction succeeds.</li>
+</ol>
+<h3 id="memory-alignment-requirements">Memory Alignment
+Requirements</h3>
+<p>For any 64-bit atomic RMW operation to execute safely, the target
+memory address must be naturally aligned to an 8-byte boundary.
+Accessing unaligned 64-bit pointers in atomic operations results in
+undefined behavior in OpenCL, typically causing kernel crashes, memory
+faults, or non-atomic split transactions that lead to silent data
+corruption.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Sub-Buffers: Zero-Copy Memory Segmentation - opencl</title>
+    <meta name="description" content="This article explores OpenCL sub-buffers, detailing how they allow developers to segment a parent memory buffer into smaller, manageable chunks without duplicating underlying data. It explains the mechanics of creating sub-buffers using clCreateSubBuffer">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-sub-buffers-zero-copy-memory-segmentation">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Sub-Buffers: Zero-Copy Memory Segmentation - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-sub-buffers-zero-copy-memory-segmentation" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explores OpenCL sub-buffers, detailing how they allow developers to segment a parent memory buffer into smaller, manageable chunks without duplicating underlying data. It explains the mechanics of creating sub-buffers using clCreateSubBuffer" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-sub-buffers-zero-copy-memory-segmentation">OpenCL
+Sub-Buffers: Zero-Copy Memory Segmentation</h1>
+<p>This article explores OpenCL sub-buffers, detailing how they allow
+developers to segment a parent memory buffer into smaller, manageable
+chunks without duplicating underlying data. It explains the mechanics of
+creating sub-buffers using <code>clCreateSubBuffer</code>, examines how
+shared physical memory addresses enable zero-copy partitioning, and
+outlines the architectural benefits and synchronization requirements for
+high-performance heterogeneous computing.</p>
+<h3 id="what-is-an-opencl-sub-buffer">What Is an OpenCL Sub-Buffer?</h3>
+<p>In OpenCL, a standard buffer object (<code>cl_mem</code>) represents
+a contiguous block of global device memory allocated using
+<code>clCreateBuffer</code>. A sub-buffer is a secondary
+<code>cl_mem</code> object that represents a specific, contiguous slice
+or window within an existing parent buffer.</p>
+<p>Introduced in OpenCL 1.1, sub-buffers act as lightweight descriptors
+or views. Instead of allocating new physical memory on the target
+compute device, a sub-buffer references the parent buffer's existing
+allocation starting at a specified byte offset.</p>
+<h3 id="how-sub-buffers-permit-segmentation-without-replication">How
+Sub-Buffers Permit Segmentation Without Replication</h3>
+<p>The primary design goal of sub-buffers is to allow memory
+partitioning without data replication. This is achieved through the
+following mechanisms:</p>
+<h4 id="1-pointer-offset-rather-than-memory-duplication">1. Pointer
+Offset Rather Than Memory Duplication</h4>
+<p>When invoking <code>clCreateSubBuffer</code>, the OpenCL runtime does
+not perform a memory copy or allocate device storage for the data
+payload. Instead, it creates a new API handle that encapsulates two
+primary values defined by a <code>cl_buffer_region</code> structure:</p>
+<ul>
+<li><strong><code>origin</code></strong>: The starting offset (in bytes)
+within the parent buffer.</li>
+<li><strong><code>size</code></strong>: The length (in bytes) of the
+sub-region.</li>
+</ul>
+<p>Any kernel reading from or writing to the sub-buffer accesses the
+exact physical memory addresses assigned to the parent buffer, offset by
+the <code>origin</code> value. Because both the parent and child objects
+map to identical underlying memory, the data is segmented logically
+rather than physically.</p>
+<h4 id="2-address-alignment-constraints">2. Address Alignment
+Constraints</h4>
+<p>To maintain hardware-level performance and prevent unaligned memory
+access penalties, OpenCL mandates that the <code>origin</code> of a
+sub-buffer must align with the target device's memory architecture. The
+required alignment is queried using <code>clGetDeviceInfo</code> with
+the flag <code>CL_DEVICE_MEM_BASE_ADDR_ALIGN</code>. Meeting this
+requirement ensures that the compute device can perform direct memory
+operations on the sub-buffer as if it were an independently allocated
+base buffer.</p>
+<h4 id="3-granular-access-permissions">3. Granular Access
+Permissions</h4>
+<p>A sub-buffer can specify its own read/write flags (e.g.,
+<code>CL_MEM_READ_ONLY</code>, <code>CL_MEM_WRITE_ONLY</code>, or
+<code>CL_MEM_READ_WRITE</code>), provided these flags do not conflict
+with the permissions of the parent buffer. This permits developers to
+segment a unified dataset into distinct operational zones with varying
+access controls without duplicating the data into separate buffers.</p>
+<h3 id="core-use-cases-and-benefits">Core Use Cases and Benefits</h3>
+<ul>
+<li><strong>Multi-Device Workload Distribution:</strong> A host
+application can allocate a single, large dataset in shared or mapped
+memory and divide it among multiple OpenCL devices by assigning distinct
+sub-buffers to each device's command queue.</li>
+<li><strong>Concurrent Kernel Execution:</strong> Modern GPUs can
+execute multiple kernels concurrently. By assigning non-overlapping
+sub-buffers to different kernels running on separate command queues,
+developers can process different sections of a dataset simultaneously
+without race conditions.</li>
+<li><strong>Elimination of Copy Overhead:</strong> Without sub-buffers,
+segmenting data requires either manually calculating offsets inside
+kernel code or using explicit buffer-to-buffer copies
+(<code>clEnqueueCopyBuffer</code>). Sub-buffers eliminate the compute,
+memory bandwidth, and latency overhead associated with redundant data
+transfers.</li>
+</ul>
+<h3 id="implementation-constraints">Implementation Constraints</h3>
+<p>While sub-buffers are efficient, they impose specific usage
+rules:</p>
+<ul>
+<li>A sub-buffer cannot be created from another sub-buffer; the parent
+must always be a primary buffer created via
+<code>clCreateBuffer</code>.</li>
+<li>The developer is responsible for synchronization. If overlapping
+sub-buffers are modified simultaneously by concurrent operations, data
+hazards will occur unless explicit event synchronization
+(<code>cl_event</code>) is implemented.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

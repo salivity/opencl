@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Why LCGs Fail in Massively Parallel OpenCL - opencl</title>
+    <meta name="description" content="Linear Congruential Generators (LCGs) are computationally lightweight, but they degrade rapidly when scaled across the massively parallel architectures targeted by OpenCL. This article examines the mathematical and architectural bottlenecks of traditiona">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/why-lc-gs-fail-in-massively-parallel-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Why LCGs Fail in Massively Parallel OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/why-lc-gs-fail-in-massively-parallel-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Linear Congruential Generators (LCGs) are computationally lightweight, but they degrade rapidly when scaled across the massively parallel architectures targeted by OpenCL. This article examines the mathematical and architectural bottlenecks of traditiona" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="why-lcgs-fail-in-massively-parallel-opencl">Why LCGs Fail in
+Massively Parallel OpenCL</h1>
+<p>Linear Congruential Generators (LCGs) are computationally
+lightweight, but they degrade rapidly when scaled across the massively
+parallel architectures targeted by OpenCL. This article examines the
+mathematical and architectural bottlenecks of traditional LCGs on
+graphics processing units (GPUs) and parallel accelerators. It explains
+how small state spaces, lattice structure defects, inter-thread
+correlations, and sequential dependencies make LCGs unsuitable for
+high-throughput parallel computing, while highlighting modern
+counter-based alternatives.</p>
+<h3 id="rapid-period-exhaustion">Rapid Period Exhaustion</h3>
+<p>Traditional LCGs rely on the recurrence relation:</p>
+<p><span class="math display">\[X_{n+1} = (aX_n + c) \pmod
+m\]</span></p>
+<p>Most standard implementations use a 32-bit modulus (<span
+class="math inline">\(m = 2^{32}\)</span>) or, at best, a 48-bit
+modulus. In an OpenCL environment running thousands of work-items
+simultaneously across multiple compute units, billions of random numbers
+are generated per second.</p>
+<p>A 32-bit LCG provides a maximum sequence of approximately <span
+class="math inline">\(4.29 \times 10^9\)</span> numbers before repeating
+entirely. When distributed across thousands of parallel threads, this
+period is consumed in a fraction of a second. Once the period is
+exhausted, simulations such as Monte Carlo methods cycle through
+identical trajectories, leading to severe statistical bias, artificially
+low variance, and incorrect results.</p>
+<h3 id="marsaglias-theorem-and-cross-thread-correlation">Marsaglia’s
+Theorem and Cross-Thread Correlation</h3>
+<p>The most critical mathematical flaw of LCGs in parallel environments
+relates to Marsaglia’s Theorem, which proves that consecutive points
+generated by an LCG fall on a limited number of parallel hyperplanes in
+multi-dimensional space.</p>
+<p>In OpenCL, developers commonly attempt to parallelize an LCG by
+assigning each work-item a different seed based on its thread index:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>uint seed <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span></code></pre></div>
+<p>Because an LCG maps nearby states linearly, threads initialized with
+consecutive or linearly spaced seeds produce sequences that are heavily
+correlated with one another. When the outputs of these parallel
+work-items are used together—such as filling spatial grids or running
+simultaneous stochastic paths—the multidimensional hyperplanes align.
+Instead of generating an even distribution of independent data, the
+threads sample from overlapping geometric planes, completely destroying
+statistical independence across the SIMD (Single Instruction, Multiple
+Data) execution wave.</p>
+<h3
+id="inefficient-parallel-parameterization-leap-frogging-and-block-splitting">Inefficient
+Parallel Parameterization (Leap-Frogging and Block Splitting)</h3>
+<p>To avoid naive seed assignment, parallel implementations
+traditionally use "leap-frogging" (thread <span
+class="math inline">\(i\)</span> generates values <span
+class="math inline">\(i, i + N, i + 2N, \dots\)</span>) or
+"block-splitting" (each thread receives a distinct sub-sequence of
+length <span class="math inline">\(L\)</span>).</p>
+<p>Both techniques fail on modern OpenCL devices:</p>
+<ol type="1">
+<li><strong>Leap-Frogging Overhead:</strong> Advancing an LCG by <span
+class="math inline">\(N\)</span> steps requires calculating <span
+class="math inline">\(a^N \pmod m\)</span> and <span
+class="math inline">\(c&#39; = c \sum_{j=0}^{N-1} a^j \pmod m\)</span>.
+While computable via modular exponentiation, this adds arithmetic
+complexity and dynamic range requirements. Furthermore, leap-frogging
+often worsens the lattice structure, causing individual threads to
+expose even fewer hyperplanes than the base generator.</li>
+<li><strong>Block-Splitting Exhaustion:</strong> Dividing a standard
+32-bit or 48-bit period among hundreds of thousands of work-items leaves
+each thread with an impractically small sub-stream, resulting in early
+overlap and cross-thread contamination.</li>
+</ol>
+<h3 id="sequential-dependencies-vs-simt-hardware">Sequential
+Dependencies vs. SIMT Hardware</h3>
+<p>The core recurrence relation of an LCG is inherently sequential:
+state <span class="math inline">\(X_{n+1}\)</span> strictly requires
+state <span class="math inline">\(X_n\)</span>. In OpenCL, maintaining
+this state requires private per-thread memory. If memory boundaries
+require reading or writing states across iterations through local or
+global memory, the memory latency can quickly throttle throughput.</p>
+<p>Furthermore, fixing the statistical issues of an LCG requires
+extending its state size to 64-bit or 128-bit integers. Many GPU
+architectures lack native 64-bit integer execution units, breaking
+wide-state operations down into multi-instruction sequences across
+32-bit registers. This increases register pressure, reduces wavefront
+occupancy per compute unit, and negates the single-cycle speed advantage
+that initially made LCGs attractive.</p>
+<h3 id="modern-alternatives-counter-based-prngs">Modern Alternatives:
+Counter-Based PRNGs</h3>
+<p>Because of these structural failures, modern OpenCL kernels utilize
+Counter-Based Pseudo-Random Number Generators (CBPRNGs), such as
+<strong>Philox</strong> or <strong>Threefry</strong>, as well as
+permuted congruential generators (PCG) or Xoroshiro algorithms.</p>
+<p>CBPRNGs compute random numbers as a function of an arbitrary key and
+a counter rather than a recursive state:</p>
+<p><span class="math display">\[R = f(\text{Key},
+\text{Counter})\]</span></p>
+<p>In this model, the OpenCL kernel sets the counter directly from
+<code>(get_global_id(0), step)</code>. This approach guarantees:</p>
+<ul>
+<li>Zero inter-thread correlation.</li>
+<li>A massive theoretical period (typically <span
+class="math inline">\(2^{128}\)</span> or <span
+class="math inline">\(2^{256}\)</span>).</li>
+<li>Stateless random access, allowing threads to branch, restart, or
+skip sequences without synchronization or memory overhead.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

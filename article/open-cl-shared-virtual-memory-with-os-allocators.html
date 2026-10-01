@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Shared Virtual Memory with OS Allocators - opencl</title>
+    <meta name="description" content="This article examines the mechanisms that allow OpenCL to access and process data residing in standard virtual memory regions managed by operating system allocators like malloc, new, or mmap. By bridging host and device address spaces through features li">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-shared-virtual-memory-with-os-allocators">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Shared Virtual Memory with OS Allocators - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-shared-virtual-memory-with-os-allocators" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article examines the mechanisms that allow OpenCL to access and process data residing in standard virtual memory regions managed by operating system allocators like malloc, new, or mmap. By bridging host and device address spaces through features li" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-shared-virtual-memory-with-os-allocators">OpenCL Shared
+Virtual Memory with OS Allocators</h1>
+<p>This article examines the mechanisms that allow OpenCL to access and
+process data residing in standard virtual memory regions managed by
+operating system allocators like <code>malloc</code>, <code>new</code>,
+or <code>mmap</code>. By bridging host and device address spaces through
+features like Shared Virtual Memory (SVM), hardware translation
+services, and unified coherency models, OpenCL eliminates the need for
+manual buffer copies and pointer translations across heterogeneous
+compute devices.</p>
+<h2 id="fine-grained-system-shared-virtual-memory-svm">Fine-Grained
+System Shared Virtual Memory (SVM)</h2>
+<p>The primary OpenCL mechanism that allows execution on host OS-managed
+virtual memory is <strong>Fine-Grained System SVM</strong>, introduced
+in OpenCL 2.0.</p>
+<p>OpenCL defines three tiers of Shared Virtual Memory:</p>
+<ul>
+<li><strong>Coarse-Grained Buffer SVM:</strong> Shares virtual addresses
+at the buffer level, requiring explicit map and unmap operations to
+synchronize access.</li>
+<li><strong>Fine-Grained Buffer SVM:</strong> Allows concurrent
+read/write operations at a byte level using OpenCL-specific allocators
+(<code>clSVMAlloc</code>).</li>
+<li><strong>Fine-Grained System SVM:</strong> Extends fine-grained
+access to the entire host virtual address space.</li>
+</ul>
+<p>Under Fine-Grained System SVM, developers can pass pointers allocated
+via standard OS memory functions (such as <code>malloc</code> in C or
+<code>std::allocator</code> in C++) directly into OpenCL kernels without
+reallocating through the OpenCL runtime or creating explicit
+<code>cl_mem</code> buffer objects.</p>
+<h2 id="address-translation-iommu-ats-and-pri">Address Translation:
+IOMMU, ATS, and PRI</h2>
+<p>To read and write OS virtual addresses, the compute device must
+translate virtual addresses into physical addresses managed by the host
+memory controller. This is accomplished via hardware-level address
+translation interfaces:</p>
+<ol type="1">
+<li><strong>IOMMU / SMMU Integration:</strong> On integrated processors
+(such as APUs), the GPU shares the system MMU or interfaces directly
+with an Input-Output Memory Management Unit (IOMMU), enabling the GPU to
+query the CPU's existing page tables directly.</li>
+<li><strong>PCIe Address Translation Services (ATS):</strong> Discrete
+accelerators communicate with the host via PCIe ATS. When a kernel
+references a virtual address, the device requests the corresponding
+physical address from the host root complex.</li>
+<li><strong>Page Request Interface (PRI):</strong> If the requested
+memory page is not yet resident in physical RAM or has been paged out by
+the OS, PRI allows the device to trigger a page fault on the host CPU.
+The operating system handles the fault, maps the page into physical
+memory, and informs the device to resume execution.</li>
+</ol>
+<h2 id="heterogeneous-memory-management-hmm">Heterogeneous Memory
+Management (HMM)</h2>
+<p>At the operating system level, frameworks such as Linux's
+<strong>Heterogeneous Memory Management (HMM)</strong> provide the
+infrastructure required for Fine-Grained System SVM. HMM mirrors process
+page tables to device-specific page tables and enables:</p>
+<ul>
+<li><strong>Demand Paging:</strong> Device drivers can mirror CPU page
+tables on demand without pinning all host memory ahead of time.</li>
+<li><strong>Page Migration:</strong> Operating systems can transparently
+migrate pages between host system RAM and device-local high-bandwidth
+memory (VRAM) while retaining the original virtual address.</li>
+</ul>
+<h2 id="cache-coherency-and-atomic-synchronization">Cache Coherency and
+Atomic Synchronization</h2>
+<p>Accessing OS-allocated virtual memory requires consistent views of
+memory across CPU and device caches. OpenCL relies on:</p>
+<ul>
+<li><strong>Hardware Coherent Interconnects:</strong> Interconnect
+protocols (such as PCIe with CXL, CCIX, or proprietary coherent buses)
+maintain hardware-level cache coherency between CPU caches and device
+caches.</li>
+<li><strong>C11/OpenCL 2.0 Atomics:</strong> OpenCL kernels use memory
+scopes (such as <code>memory_scope_all_svm_devices</code>) and atomic
+operations consistent with the C11 memory model. This ensures that
+modifications made by the GPU to OS-allocated memory are correctly
+ordered and visible to host CPU threads without requiring manual cache
+flush operations.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

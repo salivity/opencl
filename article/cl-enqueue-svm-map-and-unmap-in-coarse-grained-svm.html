@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>clEnqueueSVMMap and Unmap in Coarse-Grained SVM - opencl</title>
+    <meta name="description" content="In OpenCL, Shared Virtual Memory (SVM) simplifies heterogeneous programming by allowing the host and device to share a unified virtual address space. In coarse-grained buffer SVM, hardware cache coherency between the host CPU and the OpenCL device is not">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/cl-enqueue-svm-map-and-unmap-in-coarse-grained-svm">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="clEnqueueSVMMap and Unmap in Coarse-Grained SVM - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/cl-enqueue-svm-map-and-unmap-in-coarse-grained-svm" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL, Shared Virtual Memory (SVM) simplifies heterogeneous programming by allowing the host and device to share a unified virtual address space. In coarse-grained buffer SVM, hardware cache coherency between the host CPU and the OpenCL device is not" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="clenqueuesvmmap-and-unmap-in-coarse-grained-svm">clEnqueueSVMMap
+and Unmap in Coarse-Grained SVM</h1>
+<p>In OpenCL, Shared Virtual Memory (SVM) simplifies heterogeneous
+programming by allowing the host and device to share a unified virtual
+address space. In coarse-grained buffer SVM, hardware cache coherency
+between the host CPU and the OpenCL device is not maintained
+automatically during execution. This article explains the roles of
+<code>clEnqueueSVMMap</code> and <code>clEnqueueSVMUnmap</code>,
+demonstrating how they establish memory consistency, coordinate buffer
+ownership, and ensure safe data access between the host and device.</p>
+<h3 id="understanding-coarse-grained-svm-constraints">Understanding
+Coarse-Grained SVM Constraints</h3>
+<p>Coarse-grained SVM guarantees that the host and device use identical
+pointer values to reference data, eliminating the need to translate
+between host pointers and <code>cl_mem</code> objects. However,
+synchronization and cache coherence are bounded at the granularity of
+OpenCL commands.</p>
+<p>Because the host and device do not maintain automatic hardware-level
+cache snooping or page synchronization in coarse-grained mode,
+concurrent access to the same memory region causes race conditions and
+undefined behavior. Explicit synchronization points are required to
+define when the host owns the memory and when the device owns the
+memory.</p>
+<h3 id="the-role-of-clenqueuesvmmap">The Role of
+<code>clEnqueueSVMMap</code></h3>
+<p><code>clEnqueueSVMMap</code> transfers memory ownership of an SVM
+allocation from the OpenCL device back to the host CPU. Its primary
+responsibilities include:</p>
+<ol type="1">
+<li><strong>Enforcing Execution Order:</strong> It enqueues a command
+into the OpenCL command queue that waits for preceding device operations
+(such as compute kernels) targeting that SVM allocation to
+complete.</li>
+<li><strong>Synchronizing Caches:</strong> It instructs the OpenCL
+runtime and driver to flush device caches and invalidate host CPU
+caches. This ensures that any modifications made by an OpenCL kernel are
+completely visible to the host.</li>
+<li><strong>Granting Host Access Rights:</strong> Depending on the flags
+provided (<code>CL_MAP_READ</code>, <code>CL_MAP_WRITE</code>, or
+<code>CL_MAP_WRITE_INVALIDATE_REGION</code>), it prepares the memory
+region so the host can safely read or overwrite the memory using
+standard CPU pointers.</li>
+</ol>
+<p>If <code>clEnqueueSVMMap</code> is set to blocking
+(<code>CL_TRUE</code>), the function returns only after cache
+synchronization is complete, allowing immediate CPU access. If
+non-blocking (<code>CL_FALSE</code>), the host must wait on an
+associated event before accessing the pointer.</p>
+<h3 id="the-role-of-clenqueuesvmunmap">The Role of
+<code>clEnqueueSVMUnmap</code></h3>
+<p>Once the host finishes reading or modifying the SVM buffer, it must
+release control before enqueuing any subsequent device commands that
+reference that data. <code>clEnqueueSVMUnmap</code> handles this
+transition:</p>
+<ol type="1">
+<li><strong>Flushing Host Writes:</strong> It forces any updates made by
+the CPU out of host caches and into memory accessible by the OpenCL
+device.</li>
+<li><strong>Relinquishing Host Access:</strong> It informs the OpenCL
+runtime that the CPU has completed its access to the specified pointer
+region.</li>
+<li><strong>Unblocking Dependent Device Commands:</strong> Subsequent
+commands in the command queue (such as next-stage kernels) that depend
+on this unmap event can safely proceed, assured that they will operate
+on the latest data written by the CPU.</li>
+</ol>
+<h3 id="typical-workflow-pattern">Typical Workflow Pattern</h3>
+<p>A standard coarse-grained SVM pipeline follows a strict handoff
+sequence:</p>
+<ol type="1">
+<li><strong>Allocation:</strong> Memory is created using
+<code>clSVMAlloc</code> without the
+<code>CL_MEM_SVM_FINE_GRAIN_BUFFER</code> flag.</li>
+<li><strong>Device Processing:</strong> An OpenCL kernel executes,
+passing the SVM pointer via <code>clSetKernelExecInfo</code> and
+<code>clSetKernelArgSVMPointer</code>.</li>
+<li><strong>Acquisition (Map):</strong> The application calls
+<code>clEnqueueSVMMap</code> to wait for the kernel to finish and update
+host visibility.</li>
+<li><strong>Host Processing:</strong> The CPU reads or modifies the
+buffer using normal pointer dereferencing.</li>
+<li><strong>Release (Unmap):</strong> The application calls
+<code>clEnqueueSVMUnmap</code> to flush CPU writes back to
+device-visible memory.</li>
+<li><strong>Further Execution or Deallocation:</strong> The device can
+run additional kernels on the updated data, or the host can release the
+allocation using <code>clSVMFree</code>.</li>
+</ol>
+<p>Without explicit mapping and unmapping, coarse-grained SVM workflows
+will suffer from stale reads, incomplete writes, and memory corruption
+due to unsynchronized hardware caches.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

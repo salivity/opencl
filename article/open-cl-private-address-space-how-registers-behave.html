@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL __private Address Space: How Registers Behave - opencl</title>
+    <meta name="description" content="This article examines how the private address space functions in OpenCL, focusing on how compilers and hardware map private variables to physical registers. You will learn how work-items utilize register files for private storage, the architectural condi">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-private-address-space-how-registers-behave">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL __private Address Space: How Registers Behave - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-private-address-space-how-registers-behave" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article examines how the private address space functions in OpenCL, focusing on how compilers and hardware map private variables to physical registers. You will learn how work-items utilize register files for private storage, the architectural condi" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-__private-address-space-how-registers-behave">OpenCL
+__private Address Space: How Registers Behave</h1>
+<p>This article examines how the <code>__private</code> address space
+functions in OpenCL, focusing on how compilers and hardware map private
+variables to physical registers. You will learn how work-items utilize
+register files for private storage, the architectural conditions that
+lead to register spilling, how dynamic array indexing affects
+allocation, and best practices to maximize register utilization while
+avoiding performance bottlenecks.</p>
+<h2 id="the-role-of-__private-memory-in-opencl">The Role of
+<code>__private</code> Memory in OpenCL</h2>
+<p>In OpenCL, the <code>__private</code> (or <code>private</code>)
+address space represents memory that is strictly unique to a single
+work-item. Any variable declared inside a kernel function without an
+explicit memory space qualifier defaults to <code>__private</code>.
+Because these variables are invisible to all other work-items within the
+same work-group or across the entire compute device, the hardware
+targets the fastest possible storage mechanism available: the physical
+register file.</p>
+<h2 id="register-allocation-for-private-variables">Register Allocation
+for Private Variables</h2>
+<p>Hardware architectures, particularly GPUs and modern CPUs, possess a
+fixed pool of General Purpose Registers (GPRs) per compute unit or SIMD
+lane. When an OpenCL kernel compiles, the driver's backend compiler
+analyzes private variables and scalar values to assign them directly
+into these hardware registers.</p>
+<ul>
+<li><strong>Latency and Throughput:</strong> Registers provide zero- or
+single-cycle access latency and maximum data throughput. Accessing a
+<code>__private</code> variable mapped to a register does not traverse
+caches or memory buses.</li>
+<li><strong>Work-Item Isolation:</strong> Because registers are
+allocated per physical execution thread (representing a work-item), each
+work-item maintains its own independent state without risk of race
+conditions or synchronization overhead.</li>
+</ul>
+<h2 id="register-pressure-and-register-spilling">Register Pressure and
+Register Spilling</h2>
+<p>While registers are the ideal target for <code>__private</code> data,
+physical register files are strictly finite. When a kernel requires more
+registers than the hardware can provide—a condition known as register
+pressure—the compiler is forced to perform "register spilling."</p>
+<p>During a spill:</p>
+<ol type="1">
+<li>The compiler evicts a subset of <code>__private</code> variables out
+of the physical register file.</li>
+<li>These evicted variables are relegated to a thread-local stack area,
+which physically resides in cached or uncached global memory (often
+referred to as scratchpad or local memory depending on the vendor).</li>
+<li>The hardware must issue load and store instructions over the memory
+bus every time a spilled variable is read or updated, introducing
+substantial latency and degrading kernel throughput.</li>
+</ol>
+<p>High register usage per work-item also directly reduces device
+occupancy. If a single work-item demands a large number of registers,
+the hardware scheduler can dispatch fewer concurrent work-items per
+compute unit, limiting the GPU's ability to hide memory latency.</p>
+<h2 id="array-handling-and-dynamic-indexing">Array Handling and Dynamic
+Indexing</h2>
+<p>How arrays behave in the <code>__private</code> address space depends
+largely on compile-time evaluation:</p>
+<ul>
+<li><strong>Statically Indexed Arrays:</strong> If a private array has a
+small, constant size and is indexed only with compile-time constants
+(e.g., <code>arr[0]</code>, <code>arr[1]</code>), the compiler can
+unroll the array and map each element directly to an individual hardware
+register.</li>
+<li><strong>Dynamically Indexed Arrays:</strong> Physical register files
+generally cannot be dynamically indexed at runtime using a variable
+(e.g., <code>arr[i]</code> where <code>i</code> depends on runtime
+calculations). When an OpenCL kernel uses dynamic indexing on a private
+array, the compiler almost universally fails to map the array to
+registers, spilling the entire structure directly into high-latency
+device memory.</li>
+</ul>
+<h2 id="architectural-optimization-guidelines">Architectural
+Optimization Guidelines</h2>
+<p>To ensure <code>__private</code> variables stay in high-speed
+registers and do not spill:</p>
+<ul>
+<li><strong>Keep Private Structures Small:</strong> Limit the
+declaration of large structs or sizable arrays inside the
+<code>__private</code> space.</li>
+<li><strong>Flatten Dynamic Access:</strong> If small arrays are
+required in private space, unroll loops completely
+(<code>#pragma unroll</code>) so that index expressions resolve to
+constants during compilation.</li>
+<li><strong>Scope Variables Locally:</strong> Declare variables within
+the minimal scope where they are needed. This allows the compiler's
+liveness analysis to reuse physical registers for different variables
+across distinct phases of the kernel.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

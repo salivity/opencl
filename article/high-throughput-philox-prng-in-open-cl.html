@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-Throughput Philox PRNG in OpenCL - opencl</title>
+    <meta name="description" content="High-throughput pseudo-random number generation is essential for parallel workloads such as Monte Carlo simulations, statistical modeling, and machine learning running on modern GPUs. Counter-based pseudo-random number generators (CBPRNGs), particularly">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/high-throughput-philox-prng-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="High-Throughput Philox PRNG in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/high-throughput-philox-prng-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="High-throughput pseudo-random number generation is essential for parallel workloads such as Monte Carlo simulations, statistical modeling, and machine learning running on modern GPUs. Counter-based pseudo-random number generators (CBPRNGs), particularly" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="high-throughput-philox-prng-in-opencl">High-Throughput Philox
+PRNG in OpenCL</h1>
+<p>High-throughput pseudo-random number generation is essential for
+parallel workloads such as Monte Carlo simulations, statistical
+modeling, and machine learning running on modern GPUs. Counter-based
+pseudo-random number generators (CBPRNGs), particularly the Philox
+family, are ideal for OpenCL because they generate random values
+directly from a counter and an encryption-like key rather than updating
+a persistent sequential state. This article details the mathematical
+principles of Philox, explains how to implement the Philox4x32 algorithm
+in OpenCL C, and covers optimization strategies to achieve peak parallel
+throughput without memory bottlenecks.</p>
+<h3 id="why-counter-based-prngs-suit-opencl">Why Counter-Based PRNGs
+Suit OpenCL</h3>
+<p>Traditional PRNGs like Linear Congruential Generators (LCGs) or the
+Mersenne Twister rely on sequential internal states. In a massively
+parallel OpenCL environment, stateful generators require each work-item
+to either update global memory or maintain heavy state structures in
+private registers, causing memory latency or high register pressure.</p>
+<p>Philox operates as a keyed, counter-based bijection:</p>
+<p><span class="math display">\[\text{Output} =
+f_K(\text{Counter})\]</span></p>
+<p>Because each random vector depends solely on an arbitrary counter
+value and a user-defined key, work-items can calculate outputs
+independently. A unique counter can be derived simply from the OpenCL
+global ID and a loop step counter:</p>
+<p><span class="math display">\[\text{Counter} =
+(\text{get\_global\_id}(0), \text{loop\_iteration})\]</span></p>
+<p>This completely eliminates inter-thread communication,
+synchronization barriers, and memory access dependencies.</p>
+<h3 id="anatomy-of-the-philox4x32-algorithm">Anatomy of the Philox4x32
+Algorithm</h3>
+<p>The most widely adopted variant is <strong>Philox4x32-10</strong>,
+which processes a 128-bit counter (stored as four 32-bit unsigned
+integers: <span class="math inline">\(R_0, R_1, R_2, R_3\)</span>)
+through 10 rounds of substitution-permutation operations using two
+32-bit keys (<span class="math inline">\(K_0, K_1\)</span>).</p>
+<p>In each round:</p>
+<ol type="1">
+<li>Two non-linear multiplications are performed using high-multiplier
+constants:
+<ul>
+<li><span class="math inline">\(M_0 = \text{0xD2511F53}\)</span></li>
+<li><span class="math inline">\(M_1 = \text{0xCD9E8D57}\)</span></li>
+</ul></li>
+<li>Each 32-bit multiplication produces a 64-bit result, which is split
+into high and low 32-bit halves.</li>
+<li>The halves are XORed with the alternate values and swapped.</li>
+<li>Keys are incremented using Weyl constants (<span
+class="math inline">\(W_0 = \text{0x9E3779B9}\)</span>, <span
+class="math inline">\(W_1 = \text{0xBB67AE85}\)</span>) to avoid
+periodic correlations.</li>
+</ol>
+<h3 id="opencl-implementation">OpenCL Implementation</h3>
+<p>OpenCL provides native vector types (<code>uint4</code>,
+<code>uint2</code>) and native 32-bit integer arithmetic functions like
+<code>mul_hi</code>, making Philox highly efficient.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#define PHILOX_M0 </span><span class="bn">0xD2511F53</span><span class="bu">U</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#define PHILOX_M1 </span><span class="bn">0xCD9E8D57</span><span class="bu">U</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="pp">#define PHILOX_W0 </span><span class="bn">0x9E3779B9</span><span class="bu">U</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="pp">#define PHILOX_W1 </span><span class="bn">0xBB67AE85</span><span class="bu">U</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="pp">#define ROUNDS </span><span class="dv">10</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co">// Single Philox4x32 round function</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="kw">inline</span> uint4 philox4x32_round<span class="op">(</span>uint4 ctr<span class="op">,</span> uint2 key<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    uint hi0 <span class="op">=</span> mul_hi<span class="op">(</span>ctr<span class="op">.</span>x<span class="op">,</span> PHILOX_M0<span class="op">);</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    uint lo0 <span class="op">=</span> ctr<span class="op">.</span>x <span class="op">*</span> PHILOX_M0<span class="op">;</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    uint hi1 <span class="op">=</span> mul_hi<span class="op">(</span>ctr<span class="op">.</span>z<span class="op">,</span> PHILOX_M1<span class="op">);</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    uint lo1 <span class="op">=</span> ctr<span class="op">.</span>z <span class="op">*</span> PHILOX_M1<span class="op">;</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    uint4 next_ctr<span class="op">;</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    next_ctr<span class="op">.</span>x <span class="op">=</span> hi1 <span class="op">^</span> ctr<span class="op">.</span>y <span class="op">^</span> key<span class="op">.</span>x<span class="op">;</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    next_ctr<span class="op">.</span>y <span class="op">=</span> lo1<span class="op">;</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    next_ctr<span class="op">.</span>z <span class="op">=</span> hi0 <span class="op">^</span> ctr<span class="op">.</span>w <span class="op">^</span> key<span class="op">.</span>y<span class="op">;</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    next_ctr<span class="op">.</span>w <span class="op">=</span> lo0<span class="op">;</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> next_ctr<span class="op">;</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="co">// Full evaluation generating 4 uniform floats in [0, 1)</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a><span class="kw">inline</span> float4 philox4x32<span class="op">(</span>uint4 ctr<span class="op">,</span> uint2 key<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    <span class="pp">#pragma unroll</span></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">(</span><span class="dt">int</span> i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span> i <span class="op">&lt;</span> ROUNDS<span class="op">;</span> <span class="op">++</span>i<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>        ctr <span class="op">=</span> philox4x32_round<span class="op">(</span>ctr<span class="op">,</span> key<span class="op">);</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>        key<span class="op">.</span>x <span class="op">+=</span> PHILOX_W0<span class="op">;</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>        key<span class="op">.</span>y <span class="op">+=</span> PHILOX_W1<span class="op">;</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Scale 32-bit unsigned integers to single-precision float [0, 1)</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> <span class="dt">float</span> factor <span class="op">=</span> <span class="fl">2.3283064365386963e-10</span><span class="bu">f</span><span class="op">;</span> <span class="co">// 1.0 / 2^32</span></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> convert_float4<span class="op">(</span>ctr<span class="op">)</span> <span class="op">*</span> factor<span class="op">;</span></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> generate_random_numbers<span class="op">(</span>__global float4<span class="op">*</span> output<span class="op">,</span> </span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>                                      uint2 base_key<span class="op">,</span> </span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>                                      uint steps_per_thread<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> gid <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">(</span>uint step <span class="op">=</span> <span class="dv">0</span><span class="op">;</span> step <span class="op">&lt;</span> steps_per_thread<span class="op">;</span> <span class="op">++</span>step<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Unique counter for every thread and step</span></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>        uint4 counter <span class="op">=</span> <span class="op">(</span>uint4<span class="op">)(</span>gid<span class="op">,</span> step<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0</span><span class="op">);</span></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>        float4 random_vals <span class="op">=</span> philox4x32<span class="op">(</span>counter<span class="op">,</span> base_key<span class="op">);</span></span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>        output<span class="op">[</span>gid <span class="op">*</span> steps_per_thread <span class="op">+</span> step<span class="op">]</span> <span class="op">=</span> random_vals<span class="op">;</span></span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="key-optimizations-for-maximum-throughput">Key Optimizations for
+Maximum Throughput</h3>
+<ol type="1">
+<li><strong>Leveraging <code>mul_hi</code></strong>: Using OpenCL's
+built-in <code>mul_hi()</code> directly maps to the underlying hardware
+instruction (such as <code>MUL.HI</code> on NVIDIA GPUs or
+<code>V_MUL_HI_U32</code> on AMD architectures), preventing expensive
+64-bit emulation.</li>
+<li><strong>Loop Unrolling</strong>: Apply <code>#pragma unroll</code>
+to the main transformation loop. Because the number of rounds (7 or 10)
+is static, unrolling enables the OpenCL compiler to schedule
+instructions across registers efficiently and eliminate branch
+overhead.</li>
+<li><strong>Register Budget Management</strong>: Keep the counter
+representation inside registers (<code>uint4</code>). Avoid spilling
+registers to local memory (<code>__local</code>) or global memory
+(<code>__global</code>) within the inner loop, as Philox achieves
+maximum arithmetic intensity when completely self-contained in
+registers.</li>
+<li><strong>Vector Conversions</strong>: Utilize OpenCL vector casting
+intrinsics like <code>convert_float4()</code> along with a single scalar
+multiplication to convert 32-bit bit patterns to normalized uniform
+floats in $</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

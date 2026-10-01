@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Maximum 3D Image Dimension Limits - opencl</title>
+    <meta name="description" content="Working with 3D volumetric images in OpenCL requires navigating strict hardware, driver, and architectural constraints that vary widely across different computing devices. This article outlines the standardized minimum requirements established by the Ope">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-maximum-3-d-image-dimension-limits">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Maximum 3D Image Dimension Limits - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-maximum-3-d-image-dimension-limits" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Working with 3D volumetric images in OpenCL requires navigating strict hardware, driver, and architectural constraints that vary widely across different computing devices. This article outlines the standardized minimum requirements established by the Ope" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-maximum-3d-image-dimension-limits">OpenCL Maximum 3D
+Image Dimension Limits</h1>
+<p>Working with 3D volumetric images in OpenCL requires navigating
+strict hardware, driver, and architectural constraints that vary widely
+across different computing devices. This article outlines the
+standardized minimum requirements established by the OpenCL
+specification, examines how physical implementations differ across
+discrete GPUs, integrated processors, and CPUs, addresses memory
+allocation boundaries that constrain slice sizing, and explains how to
+query these limits programmatically.</p>
+<h3 id="opencl-specification-minimum-requirements">OpenCL Specification
+Minimum Requirements</h3>
+<p>The Khronos OpenCL specification mandates minimum guaranteed limits
+for devices that declare image support
+(<code>CL_DEVICE_IMAGE_SUPPORT</code> equal to <code>CL_TRUE</code>).
+While devices are free to exceed these values, any compliant driver must
+at least support:</p>
+<ul>
+<li><strong>OpenCL 1.0:</strong> Minimum dimensions of <span
+class="math inline">\(2048 \times 2048 \times 2048\)</span> voxels for
+width, height, and depth.</li>
+<li><strong>OpenCL 1.1, 1.2, 2.x, and 3.0:</strong> Retains the
+guaranteed baseline of at least <span
+class="math inline">\(2048\)</span> for
+<code>CL_DEVICE_IMAGE3D_MAX_WIDTH</code>,
+<code>CL_DEVICE_IMAGE3D_MAX_HEIGHT</code>, and
+<code>CL_DEVICE_IMAGE3D_MAX_DEPTH</code>.</li>
+</ul>
+<p>Embedded profiles may define lower thresholds, but standard desktop
+and workstation profiles enforce these baselines.</p>
+<h3 id="variances-across-device-architectures">Variances Across Device
+Architectures</h3>
+<p>Actual limits regularly exceed the specification minimums depending
+on the architecture:</p>
+<ul>
+<li><strong>Discrete GPUs (NVIDIA, AMD):</strong> Modern dedicated GPUs
+generally support dimensions up to <span class="math inline">\(4096
+\times 4096 \times 4096\)</span>, and high-end workstation architectures
+often extend this to <span class="math inline">\(8192\)</span> or <span
+class="math inline">\(16384\)</span> along individual dimensions.
+However, internal hardware texture mapping units (TMUs) generally
+require symmetric slice limits for width and height, even if depth
+capacity differs.</li>
+<li><strong>Integrated GPUs (Intel HD/Iris, AMD APUs, ARM
+Mali):</strong> These processors frequently align with the conservative
+<span class="math inline">\(2048^3\)</span> or <span
+class="math inline">\(4096^3\)</span> limit. Because integrated GPUs
+share physical RAM with the system, hardware addressable limits for
+continuous slice strides are tightly restricted by the onboard memory
+controller.</li>
+<li><strong>CPUs (x86/x64 via Intel OpenCL runtime or PoCL):</strong>
+Host CPUs often support dimensions of <span
+class="math inline">\(4096\)</span> or higher per axis. Although system
+RAM is abundant, CPU vector instruction sets (AVX-512, NEON) and
+software driver layers impose discrete power-of-two boundaries on
+maximum slice height and width to optimize memory alignment and cache
+eviction.</li>
+</ul>
+<h3 id="the-impact-of-allocation-limits-and-slice-pitches">The Impact of
+Allocation Limits and Slice Pitches</h3>
+<p>Meeting maximum slice dimension limits does not guarantee successful
+image creation. Developers must also account for:</p>
+<ol type="1">
+<li><strong>Total Allocation Size
+(<code>CL_DEVICE_MAX_MEM_ALLOC_SIZE</code>):</strong> A 3D image of
+<span class="math inline">\(4096 \times 4096 \times 4096\)</span> using
+a standard 4-channel, 8-bit format (<code>CL_RGBA</code>,
+<code>CL_UNORM_INT8</code>) requires 256 GB of uncompressed memory. This
+drastically exceeds the maximum single-object allocation size on nearly
+all consumer hardware.</li>
+<li><strong>Row and Slice Pitch Constraints:</strong> Drivers align
+individual 2D slices to specific memory boundaries using
+<code>CL_DEVICE_IMAGE_PITCH_ALIGNMENT</code>. Hardware often pads slice
+dimensions to powers of two or specific cache line multiples, meaning
+the internal memory footprint of a slice can be significantly larger
+than <code>width * height * pixel_size</code>.</li>
+<li><strong>2D Image Array vs. 3D Image Slice Limits:</strong> In
+OpenCL, a 3D image volume is treated differently than a 2D image array
+(<code>CL_DEVICE_IMAGE_MAX_ARRAY_SIZE</code>). A single 3D image slice
+cannot exceed the 3D dimension limits, even if the device's 2D image
+dimension limits
+(<code>CL_DEVICE_IMAGE2D_MAX_WIDTH</code>/<code>HEIGHT</code>) are
+higher.</li>
+</ol>
+<h3 id="querying-3d-limits-programmatically">Querying 3D Limits
+Programmatically</h3>
+<p>To ensure cross-device portability and prevent runtime
+<code>CL_INVALID_IMAGE_SIZE</code> errors, applications must dynamically
+inspect target devices via <code>clGetDeviceInfo</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">size_t</span> max_width<span class="op">,</span> max_height<span class="op">,</span> max_depth<span class="op">;</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>clGetDeviceInfo<span class="op">(</span>device_id<span class="op">,</span> CL_DEVICE_IMAGE3D_MAX_WIDTH<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span><span class="dt">size_t</span><span class="op">),</span> <span class="op">&amp;</span>max_width<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>clGetDeviceInfo<span class="op">(</span>device_id<span class="op">,</span> CL_DEVICE_IMAGE3D_MAX_HEIGHT<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span><span class="dt">size_t</span><span class="op">),</span> <span class="op">&amp;</span>max_height<span class="op">,</span> NULL<span class="op">);</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>clGetDeviceInfo<span class="op">(</span>device_id<span class="op">,</span> CL_DEVICE_IMAGE3D_MAX_DEPTH<span class="op">,</span> <span class="kw">sizeof</span><span class="op">(</span><span class="dt">size_t</span><span class="op">),</span> <span class="op">&amp;</span>max_depth<span class="op">,</span> NULL<span class="op">);</span></span></code></pre></div>
+<p>When designing 3D rendering pipelines, scientific visualizers, or
+volumetric compute kernels, verify that slice dimensions satisfy both
+these specific dimension queries and the overall
+<code>CL_DEVICE_MAX_MEM_ALLOC_SIZE</code> limit before allocating
+resources via <code>clCreateImage</code>.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

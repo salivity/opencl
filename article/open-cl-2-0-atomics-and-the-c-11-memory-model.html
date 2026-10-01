@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL 2.0 Atomics and the C11 Memory Model - opencl</title>
+    <meta name="description" content="OpenCL 2.0 introduced a major overhaul of its synchronization primitives by adopting the ISO C11 memory model standards for atomic operations. This alignment replaced the legacy, loosely defined OpenCL 1.x atomics with formal memory ordering semantics, s">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-2-0-atomics-and-the-c-11-memory-model">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL 2.0 Atomics and the C11 Memory Model - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-2-0-atomics-and-the-c-11-memory-model" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL 2.0 introduced a major overhaul of its synchronization primitives by adopting the ISO C11 memory model standards for atomic operations. This alignment replaced the legacy, loosely defined OpenCL 1.x atomics with formal memory ordering semantics, s" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-20-atomics-and-the-c11-memory-model">OpenCL 2.0 Atomics
+and the C11 Memory Model</h1>
+<p>OpenCL 2.0 introduced a major overhaul of its synchronization
+primitives by adopting the ISO C11 memory model standards for atomic
+operations. This alignment replaced the legacy, loosely defined OpenCL
+1.x atomics with formal memory ordering semantics, shared virtual memory
+synchronization, and fine-grained memory visibility rules. By adopting
+C11 principles, OpenCL 2.0 enables reliable lock-free programming across
+heterogeneous devices while tailoring the standard to fit massively
+parallel GPU architectures.</p>
+<h3 id="adoption-of-c11-memory-orders">Adoption of C11 Memory
+Orders</h3>
+<p>Prior to OpenCL 2.0, atomic operations were limited in scope and
+lacked formal memory ordering guarantees, functioning primarily as
+sequentially consistent or relaxed operations depending on vendor
+implementation. OpenCL 2.0 directly incorporates the memory order
+enumerations defined in the C11 standard (<code>stdatomic.h</code>),
+giving developers precise control over compiler and hardware instruction
+reordering:</p>
+<ul>
+<li><strong><code>memory_order_relaxed</code></strong>: Guarantees
+atomicity for the target variable but provides no synchronization or
+ordering constraints relative to other memory operations.</li>
+<li><strong><code>memory_order_acquire</code></strong>: Applied to read
+operations, ensuring that subsequent reads and writes cannot be
+reordered before this acquire operation.</li>
+<li><strong><code>memory_order_release</code></strong>: Applied to write
+operations, ensuring that prior reads and writes cannot be reordered
+after this release operation.</li>
+<li><strong><code>memory_order_acq_rel</code></strong>: Combines acquire
+and release semantics for read-modify-write operations.</li>
+<li><strong><code>memory_order_seq_cst</code></strong>: Enforces a
+total, globally consistent order across all participating threads.</li>
+</ul>
+<h3 id="extension-with-memory-scopes">Extension with Memory Scopes</h3>
+<p>While C11 targets symmetric multiprocessing (SMP) environments where
+all threads typically share a uniform memory view, heterogeneous
+hardware relies on a hierarchical execution model. To adapt C11
+semantics to this reality, OpenCL 2.0 extends C11 atomics with an
+explicit <code>memory_scope</code> parameter.</p>
+<p>The memory scope defines the visibility boundary of the
+synchronization effect:</p>
+<ul>
+<li><strong><code>memory_scope_work_item</code></strong>: Synchronizes
+operations only within the executing work-item (useful primarily for
+sub-buffers or self-contained state machines).</li>
+<li><strong><code>memory_scope_sub_group</code></strong>: Limits
+synchronization to a hardware warp or wavefront.</li>
+<li><strong><code>memory_scope_work_group</code></strong>: Confines the
+visibility of memory operations to work-items within the same work-group
+sharing local memory.</li>
+<li><strong><code>memory_scope_device</code></strong>: Extends
+synchronization across all work-groups executing on the specific OpenCL
+device.</li>
+<li><strong><code>memory_scope_all_svm_devices</code></strong>: Extends
+visibility across both host (CPU) and device (GPU) memory boundaries in
+Shared Virtual Memory (SVM) configurations.</li>
+</ul>
+<p>Through these scopes, OpenCL 2.0 allows an acquire-release operation
+to synchronize only the necessary subset of cores, avoiding the severe
+performance penalties of flushing memory pipelines across an entire
+GPU.</p>
+<h3 id="atomic-types-and-operations">Atomic Types and Operations</h3>
+<p>OpenCL 2.0 mirrors C11 atomic type definitions, introducing explicit
+atomic types such as <code>atomic_int</code>, <code>atomic_uint</code>,
+<code>atomic_float</code>, and <code>atomic_flag</code>. These types can
+reside in either the <code>__global</code> or <code>__local</code>
+address spaces.</p>
+<p>Functions closely follow C11 signatures, suffixed with explicit
+memory order and scope variants. For example:</p>
+<ul>
+<li>C11 standard:
+<code>atomic_fetch_add_explicit(object, operand, order)</code></li>
+<li>OpenCL 2.0:
+<code>atomic_fetch_add_explicit(object, operand, order, scope)</code></li>
+</ul>
+<p>This consistency reduces the cognitive overhead for programmers
+migrating C11 parallel algorithms to OpenCL kernels.</p>
+<h3 id="fences-and-synchronization">Fences and Synchronization</h3>
+<p>OpenCL 2.0 replaces the legacy <code>barrier()</code> and
+<code>mem_fence()</code> functions with
+<code>atomic_work_item_fence()</code>. This function aligns with the C11
+<code>atomic_thread_fence()</code> mechanism by establishing
+synchronization without requiring an atomic read-modify-write operation
+on a specific variable. It accepts memory flags
+(<code>CLK_GLOBAL_MEM_FENCE</code>, <code>CLK_LOCAL_MEM_FENCE</code>), a
+<code>memory_order</code>, and a <code>memory_scope</code>, formalizing
+synchronizes-with relationships between distinct work-items.</p>
+<h3 id="host-device-synchronization-via-svm">Host-Device Synchronization
+via SVM</h3>
+<p>A primary motivation for aligning OpenCL 2.0 with C11 was the
+introduction of Shared Virtual Memory (SVM). In fine-grained system SVM,
+host threads running native C11/C++11 code and device work-items running
+OpenCL C code can manipulate the same memory pointers simultaneously. By
+utilizing identical memory models, an <code>atomic_store_explicit</code>
+executed with release semantics on a CPU thread can be properly
+synchronized with an <code>atomic_load_explicit</code> executed with
+acquire semantics on an OpenCL compute unit.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

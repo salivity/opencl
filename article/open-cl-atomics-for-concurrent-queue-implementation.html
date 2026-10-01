@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Atomics for Concurrent Queue Implementation - opencl</title>
+    <meta name="description" content="Implementing concurrent queues directly within OpenCL kernels requires lock-free data structures that coordinate parallel work-items without traditional operating system primitives. Managing shared queue indices in global or local memory demands specific">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-atomics-for-concurrent-queue-implementation">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Atomics for Concurrent Queue Implementation - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-atomics-for-concurrent-queue-implementation" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Implementing concurrent queues directly within OpenCL kernels requires lock-free data structures that coordinate parallel work-items without traditional operating system primitives. Managing shared queue indices in global or local memory demands specific" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-atomics-for-concurrent-queue-implementation">OpenCL
+Atomics for Concurrent Queue Implementation</h1>
+<p>Implementing concurrent queues directly within OpenCL kernels
+requires lock-free data structures that coordinate parallel work-items
+without traditional operating system primitives. Managing shared queue
+indices in global or local memory demands specific OpenCL atomic
+operations to allocate slots, monitor bounds, and ensure safe data
+visibility. This article outlines the essential atomic operations—such
+as fetch-and-add, compare-and-swap, and memory fences—required to
+construct robust, high-throughput concurrent queues across OpenCL 1.2
+and modern OpenCL 2.0+ standards.</p>
+<h3 id="fundamental-queue-architecture-on-gpus">Fundamental Queue
+Architecture on GPUs</h3>
+<p>A concurrent queue inside an OpenCL device is typically implemented
+as a fixed-capacity circular ring buffer residing in
+<code>__global</code> or <code>__local</code> memory. The queue relies
+on shared state variables:</p>
+<ul>
+<li><strong>Tail Index:</strong> The slot where producers enqueue new
+items.</li>
+<li><strong>Head Index:</strong> The slot from which consumers dequeue
+items.</li>
+<li><strong>Capacity/Occupancy Counter:</strong> A tracking variable to
+prevent buffer overflows and underflows.</li>
+</ul>
+<p>Because thousands of GPU work-items may attempt to push or pop data
+simultaneously, reading and modifying these indices must occur
+atomically to avoid data races and queue corruption.</p>
+<h3 id="1-slot-allocation-atomic-add-and-increment">1. Slot Allocation:
+Atomic Add and Increment</h3>
+<p>To push an element, a work-item must reserve a unique write index. To
+pop an element, a work-item must reserve a unique read index.</p>
+<ul>
+<li><strong>OpenCL 1.x Functions:</strong> <code>atomic_inc()</code> or
+<code>atomic_add()</code></li>
+<li><strong>OpenCL 2.0+ Functions:</strong>
+<code>atomic_fetch_add()</code> or
+<code>atomic_fetch_add_explicit()</code></li>
+</ul>
+<p>When enqueuing, a work-item invokes
+<code>atomic_inc(&amp;tail)</code> or
+<code>atomic_fetch_add_explicit(&amp;tail, 1, memory_order_relaxed, memory_scope_device)</code>.
+This returns the previous tail value, granting the calling thread
+exclusive ownership of that index modulo the queue capacity. The same
+atomic pattern applies to the <code>head</code> pointer during dequeue
+operations.</p>
+<h3 id="2-state-validation-and-slot-locking-compare-and-swap-cas">2.
+State Validation and Slot Locking: Compare-and-Swap (CAS)</h3>
+<p>Simple fetch-and-add operations can cause race conditions when queues
+approach full or empty boundaries, or when tracking individual slot
+occupancy. Atomic compare-and-swap ensures conditional updates occur
+only when the state matches expectations.</p>
+<ul>
+<li><strong>OpenCL 1.x Functions:</strong>
+<code>atomic_cmpxchg()</code></li>
+<li><strong>OpenCL 2.0+ Functions:</strong>
+<code>atomic_compare_exchange_strong()</code> or
+<code>atomic_compare_exchange_weak()</code></li>
+</ul>
+<p>Applications of CAS in concurrent queues include:</p>
+<ul>
+<li><strong>Bounded Enqueue/Dequeue:</strong> Before advancing
+<code>tail</code>, an atomic CAS can verify that
+<code>(tail - head) &lt; capacity</code>, preventing producers from
+overwriting unconsumed data.</li>
+<li><strong>Node-Based Linked Lists:</strong> In dynamic queues,
+updating the next pointer of a node requires <code>atomic_cmpxchg</code>
+to ensure that another work-item has not linked a different node
+simultaneously.</li>
+<li><strong>Slot Readiness Tracking:</strong> A per-slot generation or
+state counter (e.g., <code>EMPTY</code>, <code>WRITING</code>,
+<code>READY</code>) is transitioned using CAS to guarantee a consumer
+reads only after a producer finishes writing.</li>
+</ul>
+<h3 id="3-queue-capacity-tracking-atomic-subtraction-and-decrement">3.
+Queue Capacity Tracking: Atomic Subtraction and Decrement</h3>
+<p>When a separate counter is maintained to monitor total occupancy,
+operations must mirror allocation increments with decrements.</p>
+<ul>
+<li><strong>OpenCL 1.x Functions:</strong> <code>atomic_dec()</code> or
+<code>atomic_sub()</code></li>
+<li><strong>OpenCL 2.0+ Functions:</strong>
+<code>atomic_fetch_sub()</code> or
+<code>atomic_fetch_sub_explicit()</code></li>
+</ul>
+<p>If an enqueue operation encounters a full queue after tentatively
+advancing an index, <code>atomic_dec()</code> rolls back the count. In
+dequeue logic, successfully taking an item requires decrementing the
+available element count.</p>
+<h3 id="4-memory-ordering-and-synchronization-fences">4. Memory Ordering
+and Synchronization Fences</h3>
+<p>Atomic updates to an index only guarantee that the index itself is
+incremented safely; they do not guarantee that the written payload data
+is visible to other work-items. To prevent consumers from reading stale
+data from a newly reserved slot, atomic operations must be paired with
+synchronization barriers.</p>
+<ul>
+<li><strong>OpenCL 1.x Primitive:</strong>
+<code>mem_fence(CLK_GLOBAL_MEM_FENCE)</code> or
+<code>read_mem_fence()</code> / <code>write_mem_fence()</code></li>
+<li><strong>OpenCL 2.0+ Primitives:</strong>
+<code>atomic_work_item_fence()</code> with
+<code>memory_order_release</code> and
+<code>memory_order_acquire</code></li>
+</ul>
+<p>A producer writes data to the array slot and applies a
+<strong>release fence</strong> before atomically setting a flag
+indicating the slot is filled. A consumer uses an <strong>acquire
+fence</strong> after observing the valid flag, guaranteeing that the
+memory subsystem has committed the actual payload before the consumer
+reads it.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL clGetExtensionFunctionAddressForPlatform Guide - opencl</title>
+    <meta name="description" content="The clGetExtensionFunctionAddressForPlatform function is a core OpenCL API utility used to retrieve memory addresses of vendor-specific and Khronos-approved extension functions at runtime. In modern OpenCL development, extension features are not directly">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-cl-get-extension-function-address-for-platform-guide">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL clGetExtensionFunctionAddressForPlatform Guide - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-cl-get-extension-function-address-for-platform-guide" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The clGetExtensionFunctionAddressForPlatform function is a core OpenCL API utility used to retrieve memory addresses of vendor-specific and Khronos-approved extension functions at runtime. In modern OpenCL development, extension features are not directly" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-clgetextensionfunctionaddressforplatform-guide">OpenCL
+clGetExtensionFunctionAddressForPlatform Guide</h1>
+<p>The <code>clGetExtensionFunctionAddressForPlatform</code> function is
+a core OpenCL API utility used to retrieve memory addresses of
+vendor-specific and Khronos-approved extension functions at runtime. In
+modern OpenCL development, extension features are not directly exposed
+as statically linked entry points by the OpenCL Installable Client
+Driver (ICD) loader. This article explains the primary utility of
+<code>clGetExtensionFunctionAddressForPlatform</code>, why it replaced
+its deprecated predecessor, and how it safely resolves platform-specific
+extension pointers in multi-vendor environments.</p>
+<h3 id="the-need-for-dynamic-extension-resolution">The Need for Dynamic
+Extension Resolution</h3>
+<p>OpenCL extensions introduce new capabilities—such as
+hardware-specific memory sharing, specialized math routines, or custom
+device configurations—that are not part of the core specification.
+Because these features vary across vendors and devices, the primary
+OpenCL library (<code>libOpenCL.so</code> or <code>OpenCL.dll</code>)
+does not export static symbols for them. Applications must query the
+platform at runtime to determine if an extension is supported and then
+dynamically retrieve function pointers to execute the related
+routines.</p>
+<h3 id="the-role-of-clgetextensionfunctionaddressforplatform">The Role
+of <code>clGetExtensionFunctionAddressForPlatform</code></h3>
+<p>Introduced in OpenCL 1.2,
+<code>clGetExtensionFunctionAddressForPlatform</code> has the following
+signature:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span><span class="op">*</span> clGetExtensionFunctionAddressForPlatform<span class="op">(</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    cl_platform_id platform<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> <span class="dt">char</span> <span class="op">*</span>funcname<span class="op">);</span></span></code></pre></div>
+<p>Its primary utility is to provide a platform-aware mechanism for
+symbol resolution. When invoked with a valid <code>cl_platform_id</code>
+and the name of an extension function, it inspects that specific
+platform driver's dispatch table and returns a function pointer. If the
+platform does not recognize or support the specified function name, it
+returns <code>NULL</code>.</p>
+<h3 id="eliminating-ambiguity-across-multiple-platforms">Eliminating
+Ambiguity Across Multiple Platforms</h3>
+<p>Before OpenCL 1.2, developers used
+<code>clGetExtensionFunctionAddress</code>, which took only the function
+name without identifying the platform. This created critical flaws in
+systems featuring multiple heterogeneous platforms (for example, a
+system with both an integrated Intel GPU and a discrete NVIDIA or AMD
+GPU):</p>
+<ul>
+<li><strong>Cross-Driver Collisions:</strong> If two installed platforms
+implemented the same extension name (such as standard Khronos extensions
+like <code>clCreateEventFromGLsyncKHR</code>), the legacy function had
+no way to determine which platform's implementation to load.</li>
+<li><strong>Driver Undefined Behavior:</strong> Calling an extension
+function pointer belonging to Platform A using resources created by
+Platform B leads to memory corruption, segmentation faults, or silent
+data errors.</li>
+</ul>
+<p>By requiring a <code>cl_platform_id</code> parameter,
+<code>clGetExtensionFunctionAddressForPlatform</code> binds the resolved
+pointer directly to the target platform's execution context, ensuring
+that driver dispatch tables remain completely isolated and accurate.</p>
+<h3 id="proper-implementation-workflow">Proper Implementation
+Workflow</h3>
+<p>To safely utilize extension function pointers via
+<code>clGetExtensionFunctionAddressForPlatform</code>, applications
+follow a standard three-step workflow:</p>
+<ol type="1">
+<li><strong>Verify Extension Support:</strong> Query
+<code>clGetPlatformInfo</code> with <code>CL_PLATFORM_EXTENSIONS</code>
+to confirm that the extension string contains the target feature
+name.</li>
+<li><strong>Retrieve the Function Pointer:</strong> Call
+<code>clGetExtensionFunctionAddressForPlatform</code> with the
+corresponding <code>cl_platform_id</code> and function name string.</li>
+<li><strong>Typecast and Validate:</strong> Cast the returned
+<code>void*</code> pointer to the explicit function pointer type defined
+in the OpenCL extension headers (<code>cl_ext.h</code>), checking that
+the result is non-null before executing it.</li>
+</ol>
+<h3 id="portability-and-icd-loader-reliability">Portability and ICD
+Loader Reliability</h3>
+<p>In environments utilizing the Khronos ICD loader,
+<code>clGetExtensionFunctionAddressForPlatform</code> serves as the
+bridge between the hardware-agnostic loader layer and the
+hardware-specific runtime. It guarantees that applications remain
+portable across varied operating systems and multi-GPU configurations,
+enabling developers to adopt advanced accelerator features safely
+without sacrificing runtime stability.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

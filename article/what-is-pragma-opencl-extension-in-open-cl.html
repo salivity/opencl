@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>What Is pragma OPENCL EXTENSION in OpenCL? - opencl</title>
+    <meta name="description" content="In OpenCL kernel programming, hardware capabilities and language features often vary across different compute devices and vendor platforms. This article explains the purpose of the #pragma OPENCL EXTENSION directive, detailing how it enables or disables">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/what-is-pragma-opencl-extension-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="What Is pragma OPENCL EXTENSION in OpenCL? - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/what-is-pragma-opencl-extension-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL kernel programming, hardware capabilities and language features often vary across different compute devices and vendor platforms. This article explains the purpose of the #pragma OPENCL EXTENSION directive, detailing how it enables or disables" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="what-is-pragma-opencl-extension-in-opencl">What Is pragma OPENCL
+EXTENSION in OpenCL?</h1>
+<p>In OpenCL kernel programming, hardware capabilities and language
+features often vary across different compute devices and vendor
+platforms. This article explains the purpose of the
+<code>#pragma OPENCL EXTENSION</code> directive, detailing how it
+enables or disables optional language features, ensures hardware
+compatibility, and controls compiler behavior during runtime kernel
+compilation.</p>
+<p>The primary purpose of <code>#pragma OPENCL EXTENSION</code> is to
+tell the OpenCL compiler to selectively enable or disable optional
+extensions and vendor-specific features within OpenCL C kernel source
+code. Because OpenCL runs on a wide array of architectures—such as CPUs,
+GPUs, and FPGAs—not all hardware supports every advanced capability.
+Core specifications define mandatory features, while optional
+capabilities (such as double-precision floating-point arithmetic or
+specific hardware intrinsics) are packaged as extensions.</p>
+<p>The directive uses the following syntax:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#pragma OPENCL EXTENSION extension_name : behavior</span></span></code></pre></div>
+<p>The <code>extension_name</code> represents the specific extension
+(for example, <code>cl_khr_fp64</code>), and <code>behavior</code>
+typically dictates how the compiler handles it:</p>
+<ul>
+<li><strong><code>enable</code></strong>: Instructs the compiler to
+allow types, built-in functions, and tokens provided by the extension.
+If the target device does not support the extension, the compiler
+produces a warning or error.</li>
+<li><strong><code>disable</code></strong>: Instructs the compiler to
+forbid the use of any functions or types introduced by the specified
+extension.</li>
+<li><strong><code>all</code></strong>: Can be combined with
+<code>disable</code> (i.e.,
+<code>#pragma OPENCL EXTENSION all : disable</code>) to turn off all
+optional extensions, enforcing strict adherence to core OpenCL C.</li>
+</ul>
+<p>A common application of this directive is enabling double-precision
+floating-point support. In OpenCL versions where 64-bit floating-point
+math is not part of the standard core, using the <code>double</code>
+primitive type requires enabling the corresponding extension:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#pragma OPENCL EXTENSION cl_khr_fp64 : enable</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> process_data<span class="op">(</span>__global <span class="dt">double</span> <span class="op">*</span>input<span class="op">,</span> __global <span class="dt">double</span> <span class="op">*</span>output<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> id <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    output<span class="op">[</span>id<span class="op">]</span> <span class="op">=</span> input<span class="op">[</span>id<span class="op">]</span> <span class="op">*</span> <span class="fl">2.0</span><span class="op">;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Without the directive, the compiler will fail with an error when
+encountering the <code>double</code> keyword or double-precision
+intrinsic functions, even if the underlying device supports 64-bit
+precision.</p>
+<p>Proper development practice requires querying device capabilities on
+the host side first using <code>clGetDeviceInfo</code> with the
+<code>CL_DEVICE_EXTENSIONS</code> flag. Once the host confirms that the
+target device supports the required extension, the kernel can safely use
+<code>#pragma OPENCL EXTENSION</code> to activate the feature without
+compilation failures.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

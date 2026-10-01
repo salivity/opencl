@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Pipe Reservation for Packet Batching - opencl</title>
+    <meta name="description" content="Reservation-based access in OpenCL pipes enables kernels to coordinate high-throughput data transfers by allocating dedicated segments of a pipe buffer prior to writing or reading data. By acquiring a reservation ID for a batch of packets, work-items or">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-pipe-reservation-for-packet-batching">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Pipe Reservation for Packet Batching - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-pipe-reservation-for-packet-batching" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Reservation-based access in OpenCL pipes enables kernels to coordinate high-throughput data transfers by allocating dedicated segments of a pipe buffer prior to writing or reading data. By acquiring a reservation ID for a batch of packets, work-items or" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-pipe-reservation-for-packet-batching">OpenCL Pipe
+Reservation for Packet Batching</h1>
+<p>Reservation-based access in OpenCL pipes enables kernels to
+coordinate high-throughput data transfers by allocating dedicated
+segments of a pipe buffer prior to writing or reading data. By acquiring
+a reservation ID for a batch of packets, work-items or entire
+work-groups can populate or extract multiple elements concurrently
+without intermediate pipe lockups or race conditions. This article
+details the mechanics of reservation-based pipe access, the step-by-step
+lifecycle of batched transactions, the distinction between work-item and
+work-group operations, and the performance benefits of this model.</p>
+<h3 id="the-mechanics-of-reservation-based-access">The Mechanics of
+Reservation-Based Access</h3>
+<p>Standard OpenCL pipe operations (<code>read_pipe</code> and
+<code>write_pipe</code>) operate on single elements sequentially. When
+multiple work-items attempt to read or write simultaneously,
+synchronization overhead increases, leading to potential pipeline
+stalls.</p>
+<p>Reservation-based access circumvents this bottleneck using a
+two-phase transaction model: <strong>reserve</strong> and
+<strong>commit</strong>. Instead of accessing the pipe's underlying FIFO
+buffer directly, a work-item or work-group reserves a contiguous block
+of indices for a batch of packets. Once the reservation is granted,
+elements within that batch can be indexed and modified independently by
+distinct work-items. After data transfer concludes, committing the
+reservation updates the pipe's head or tail pointers in a single
+operation, exposing the entire batch atomically to downstream
+consumers.</p>
+<h3 id="the-batching-lifecycle">The Batching Lifecycle</h3>
+<p>Executing a batched write operation follows a defined sequence in
+OpenCL:</p>
+<ol type="1">
+<li><p><strong>Requesting the Reservation:</strong> A kernel requests
+space for a specific number of packets (<span
+class="math inline">\(N\)</span>) using <code>reserve_write_pipe</code>
+(for individual work-items) or
+<code>work_group_reserve_write_pipe</code> (for collaborative
+work-groups). The runtime attempts to secure <span
+class="math inline">\(N\)</span> contiguous slots in the pipe and
+returns an identifier of type <code>reserve_id_t</code>.</p></li>
+<li><p><strong>Validating the Reservation:</strong> Reservations are
+non-blocking. If the pipe does not contain enough free space to
+accommodate the full batch, the reservation fails. The kernel must
+verify success using the built-in <code>is_valid_reserve_id()</code>
+function before proceeding.</p></li>
+<li><p><strong>Writing Batched Elements:</strong> If valid, work-items
+insert data using indexed write functions that accept the reservation
+ID:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>write_pipe<span class="op">(</span>pipe<span class="op">,</span> reservation_id<span class="op">,</span> index<span class="op">,</span> <span class="op">&amp;</span>data<span class="op">);</span></span></code></pre></div>
+<p>The <code>index</code> parameter ranges from <code>0</code> to
+<code>N - 1</code>. Because the reservation guarantees ownership over
+these slots, multiple work-items can write to different indices
+concurrently without internal race conditions.</p></li>
+<li><p><strong>Committing the Batch:</strong> Once all packets in the
+batch are written, the reservation is finalized using
+<code>commit_write_pipe</code> or
+<code>work_group_commit_write_pipe</code>. Committing publishes the
+entire batch to the pipe, making the packets visible to the reading
+kernel. Alternatively, if a kernel encounters an error or partial
+processing state, it can drop the reserved slots without altering the
+active pipe state.</p></li>
+</ol>
+<p>A mirror process applies to consumers using
+<code>reserve_read_pipe</code>, <code>read_pipe</code> with an index,
+and <code>commit_read_pipe</code>.</p>
+<h3 id="work-item-vs-work-group-batching">Work-Item vs. Work-Group
+Batching</h3>
+<p>OpenCL provides two execution scopes for reservation-based
+batching:</p>
+<ul>
+<li><strong>Work-Item Scope:</strong> A single work-item creates,
+populates, and commits the reservation. This is best suited for
+scenarios where individual threads gather data from distinct private
+memory locations into local batches before pushing them down the
+pipeline.</li>
+<li><strong>Work-Group Scope:</strong> All work-items in a work-group
+cooperate to reserve a larger batch. Functions such as
+<code>work_group_reserve_write_pipe</code> execute collectively across
+the work-group. Work-items then distribute the batch indices among
+themselves (for example, work-item <span
+class="math inline">\(i\)</span> writes to index <span
+class="math inline">\(i\)</span>). This pattern maximizes parallel
+compute resource utilization and minimizes global memory
+transactions.</li>
+</ul>
+<h3 id="key-performance-benefits">Key Performance Benefits</h3>
+<ul>
+<li><strong>Amortized Synchronization:</strong> Allocating and
+committing an entire block amortizes atomic pointer updates across
+multiple elements rather than incurring synchronization costs on every
+individual packet.</li>
+<li><strong>Coalesced Access:</strong> Work-group reservations allow
+contiguous memory writes across work-items, enhancing hardware memory
+coalescing when passing packets into local or global pipe
+allocations.</li>
+<li><strong>Predictable Throughput:</strong> By requiring batch
+validation upfront, reservation-based access ensures that kernels only
+compute or transfer data when full capacity is guaranteed, preventing
+partial deadlock states between producer and consumer kernels.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

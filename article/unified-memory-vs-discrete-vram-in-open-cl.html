@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified Memory vs Discrete VRAM in OpenCL - opencl</title>
+    <meta name="description" content="When developing high-performance applications with OpenCL, choosing between a unified memory architecture (UMA) and discrete video RAM (VRAM) involves significant architectural trade-offs. While discrete GPUs provide immense raw memory bandwidth at the c">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/unified-memory-vs-discrete-vram-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Unified Memory vs Discrete VRAM in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/unified-memory-vs-discrete-vram-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="When developing high-performance applications with OpenCL, choosing between a unified memory architecture (UMA) and discrete video RAM (VRAM) involves significant architectural trade-offs. While discrete GPUs provide immense raw memory bandwidth at the c" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="unified-memory-vs-discrete-vram-in-opencl">Unified Memory vs
+Discrete VRAM in OpenCL</h1>
+<p>When developing high-performance applications with OpenCL, choosing
+between a unified memory architecture (UMA) and discrete video RAM
+(VRAM) involves significant architectural trade-offs. While discrete
+GPUs provide immense raw memory bandwidth at the cost of PCIe transfer
+latency, unified architectures eliminate physical data transfers by
+sharing system RAM between the CPU and GPU. This article examines the
+core trade-offs between these two models in OpenCL, focusing on memory
+bandwidth, data transfer overhead, capacity, and programming
+complexity.</p>
+<h3 id="memory-bandwidth-and-latency">Memory Bandwidth and Latency</h3>
+<p>The defining performance difference lies in peak bandwidth versus
+data transfer latency. Discrete graphics cards utilize specialized,
+high-speed memory like GDDR6 or HBM, providing several hundred gigabytes
+to over a terabyte per second of bandwidth. For compute-bound kernels
+with high arithmetic intensity, discrete VRAM is vastly superior.
+However, accessing this memory from the host requires transmitting data
+across the PCIe bus, introducing measurable latency.</p>
+<p>In contrast, unified architectures (common in mobile SoCs, Apple
+Silicon, and AMD APUs) share standard system memory (DDR4, DDR5, or
+LPDDR5). While standard system memory offers significantly lower
+bandwidth than GDDR6, it eliminates the bus traversal latency between
+the host processor and the compute device.</p>
+<h3 id="zero-copy-operations-and-host-transfers">Zero-Copy Operations
+and Host Transfers</h3>
+<p>Discrete systems require explicit memory staging. In OpenCL, this
+typically involves allocating device buffers
+(<code>clCreateBuffer</code>) and using commands like
+<code>clEnqueueWriteBuffer</code> and <code>clEnqueueReadBuffer</code>.
+These operations can stall the compute pipeline unless hidden behind
+asynchronous queues and double-buffering patterns.</p>
+<p>Unified memory architectures enable genuine "zero-copy" execution.
+Because the CPU and GPU share the same physical address space, OpenCL
+can map host pointers directly to device memory using flags like
+<code>CL_MEM_USE_HOST_PTR</code> or <code>CL_MEM_ALLOC_HOST_PTR</code>
+alongside <code>clEnqueueMapBuffer</code>. This removes the overhead of
+duplicating datasets, making unified memory significantly faster for
+pipelines that frequently alternate execution between CPU and GPU
+workloads.</p>
+<h3 id="capacity-and-resource-contention">Capacity and Resource
+Contention</h3>
+<p>Capacity constraints differ substantially between the two
+designs:</p>
+<ul>
+<li><strong>Discrete VRAM:</strong> The memory pool is fixed and
+dedicated. While this guarantees the GPU will not compete with host OS
+processes for bandwidth, it imposes a hard ceiling on dataset size. If
+an OpenCL workload exceeds the physical VRAM limit, performance degrades
+drastically due to host-device paging or allocation failures.</li>
+<li><strong>Unified Memory:</strong> The GPU can allocate from the
+entire pool of system RAM, enabling execution on datasets far larger
+than what could fit on a standard discrete card. However, because the
+CPU and GPU share the same memory controllers and cache hierarchies,
+heavy CPU activity can saturate the memory bus, starving the GPU and
+causing unpredictable execution times.</li>
+</ul>
+<h3 id="development-complexity-and-portability">Development Complexity
+and Portability</h3>
+<p>Writing portable OpenCL code that performs optimally across both
+architectures is challenging. Optimized discrete GPU code relies heavily
+on keeping data resident in VRAM for as long as possible and utilizing
+OpenCL local memory (<code>__local</code>) to hide latency.</p>
+<p>Unified memory code, however, benefits from minimizing internal
+caching mechanisms and leveraging cache-coherent host mappings. An
+application optimized solely for discrete GPUs may underperform on an
+integrated system due to redundant allocation passes, whereas code
+written strictly for unified architectures may incur severe PCIe
+transfer penalties when run on a discrete system.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

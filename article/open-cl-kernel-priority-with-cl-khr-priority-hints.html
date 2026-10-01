@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Kernel Priority with cl_khr_priority_hints - opencl</title>
+    <meta name="description" content="The clkhrpriorityhints extension provides an API mechanism in OpenCL to assign relative scheduling priorities to command queues, enabling the hardware scheduler to favor latency-sensitive kernels over background compute workloads. This article explains h">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-kernel-priority-with-cl-khr-priority-hints">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Kernel Priority with cl_khr_priority_hints - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-kernel-priority-with-cl-khr-priority-hints" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The clkhrpriorityhints extension provides an API mechanism in OpenCL to assign relative scheduling priorities to command queues, enabling the hardware scheduler to favor latency-sensitive kernels over background compute workloads. This article explains h" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-kernel-priority-with-cl_khr_priority_hints">OpenCL Kernel
+Priority with cl_khr_priority_hints</h1>
+<p>The <code>cl_khr_priority_hints</code> extension provides an API
+mechanism in OpenCL to assign relative scheduling priorities to command
+queues, enabling the hardware scheduler to favor latency-sensitive
+kernels over background compute workloads. This article explains how the
+extension is structured, the priority levels it introduces, how to
+configure these hints during queue creation, and how the underlying
+device driver handles execution arbitration.</p>
+<h3 id="purpose-of-the-extension">Purpose of the Extension</h3>
+<p>By default, OpenCL command queues treat submitted tasks with equal
+weight across the device, scheduling kernels based primarily on
+submission order and resource availability. In mixed-workload
+environments—such as interactive graphics combined with heavy
+asynchronous compute—background kernels can cause latency spikes in
+critical tasks.</p>
+<p>The <code>cl_khr_priority_hints</code> extension solves this by
+enabling host applications to designate a queue as high, medium, or low
+priority. The driver and hardware use these hints to make informed
+scheduling, preemption, and resource allocation decisions between
+competing queues on the same OpenCL context or device.</p>
+<h3 id="supported-priority-levels">Supported Priority Levels</h3>
+<p>The extension introduces the <code>cl_queue_priority_khr</code>
+property type along with three specific priority tokens passed via the
+queue properties list:</p>
+<ul>
+<li><strong><code>CL_QUEUE_PRIORITY_HIGH_KHR</code></strong>: Indicates
+that commands submitted to this queue require minimal execution latency.
+The scheduler allocates execution resources to these kernels first and
+may preempt lower-priority tasks if supported by the hardware
+architecture.</li>
+<li><strong><code>CL_QUEUE_PRIORITY_MED_KHR</code></strong>: The default
+operational priority level. Kernels execute under standard round-robin
+or FIFO scheduling models.</li>
+<li><strong><code>CL_QUEUE_PRIORITY_LOW_KHR</code></strong>: Applied to
+throughput-oriented or non-urgent background workloads. The scheduler
+may starve or delay these tasks whenever medium- or high-priority queues
+have work available.</li>
+</ul>
+<p>Because these values are defined as "hints," hardware implementations
+are not required to enforce strict real-time scheduling. If an
+underlying architecture lacks preemption mechanisms or granular priority
+scheduling, the driver may fall back to standard execution behavior.</p>
+<h3 id="configuring-queue-priority">Configuring Queue Priority</h3>
+<p>Queue priorities are configured at queue creation time using the
+<code>clCreateCommandQueueWithProperties</code> function (or
+<code>clCreateCommandQueueWithPropertiesKHR</code> on older OpenCL
+versions). The priority hint cannot be altered once the queue is
+instantiated.</p>
+<p>Before using the extension, verify its presence by querying
+<code>CL_DEVICE_EXTENSIONS</code> using <code>clGetDeviceInfo</code>.
+Once confirmed, construct a property list containing the priority
+property and value pair:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_queue_properties properties<span class="op">[]</span> <span class="op">=</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    CL_QUEUE_PROPERTIES<span class="op">,</span> CL_QUEUE_PROFILING_ENABLE<span class="op">,</span> <span class="co">// Optional additional properties</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    CL_QUEUE_PRIORITY_KHR<span class="op">,</span> CL_QUEUE_PRIORITY_HIGH_KHR<span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dv">0</span> <span class="co">// Null-terminated list</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>cl_command_queue queue <span class="op">=</span> clCreateCommandQueueWithProperties<span class="op">(</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    context<span class="op">,</span> </span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    device<span class="op">,</span> </span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    properties<span class="op">,</span> </span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span>err</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<p>Kernels enqueued to this high-priority command queue inherit that
+priority during device execution.</p>
+<h3 id="scheduling-and-hardware-impact">Scheduling and Hardware
+Impact</h3>
+<p>When multiple queues submit workloads simultaneously, the GPU or
+compute device scheduler uses priority hints in several ways:</p>
+<ol type="1">
+<li><strong>Work-Group Dispatch:</strong> High-priority work-groups are
+issued to compute units (CUs) before work-groups from lower-priority
+queues.</li>
+<li><strong>Context Switching and Preemption:</strong> On hardware that
+supports compute preemption, a running low-priority kernel can be
+suspended at instruction or thread-group boundaries to immediately
+service a high-priority command.</li>
+<li><strong>Memory Subsystem Arbitration:</strong> Some implementations
+prioritize memory transactions generated by high-priority command queues
+at the level of the memory controller, reducing cache thrashing and
+memory latency for critical kernels.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

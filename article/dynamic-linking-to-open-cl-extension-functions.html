@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Linking to OpenCL Extension Functions - opencl</title>
+    <meta name="description" content="OpenCL extensions introduce vendor-specific or experimental capabilities that are not part of the core OpenCL standard. Because these functions are not exported as standard symbols by the OpenCL Installable Client Driver (ICD) loader at compile time, an">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/dynamic-linking-to-open-cl-extension-functions">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Dynamic Linking to OpenCL Extension Functions - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/dynamic-linking-to-open-cl-extension-functions" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL extensions introduce vendor-specific or experimental capabilities that are not part of the core OpenCL standard. Because these functions are not exported as standard symbols by the OpenCL Installable Client Driver (ICD) loader at compile time, an" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="dynamic-linking-to-opencl-extension-functions">Dynamic Linking
+to OpenCL Extension Functions</h1>
+<p>OpenCL extensions introduce vendor-specific or experimental
+capabilities that are not part of the core OpenCL standard. Because
+these functions are not exported as standard symbols by the OpenCL
+Installable Client Driver (ICD) loader at compile time, an application
+cannot link against them directly. Instead, an OpenCL program must
+resolve these functions dynamically at runtime using function pointers
+and the OpenCL runtime API. This article explains the mechanism of
+dynamic resolution, the specific APIs involved, and the standard
+implementation steps.</p>
+<h3 id="why-extensions-require-dynamic-linking">Why Extensions Require
+Dynamic Linking</h3>
+<p>Standard OpenCL functions (such as <code>clCreateBuffer</code> or
+<code>clEnqueueNDRangeKernel</code>) are declared in core headers and
+resolved by linking against <code>libOpenCL.so</code> (Linux) or
+<code>OpenCL.lib</code> (Windows). Extensions vary between platforms,
+GPUs, and driver versions. To maintain cross-platform portability and
+avoid unresolved symbol errors at startup, compilers and runtime loaders
+do not expose extension functions as global symbols. Instead,
+applications query the driver dynamically to determine if an extension
+exists and to obtain the exact memory address of its implementation.</p>
+<h3 id="step-1-verify-extension-availability">Step 1: Verify Extension
+Availability</h3>
+<p>Before attempting to resolve an extension function, the application
+must verify that the target platform or device supports the
+extension.</p>
+<ol type="1">
+<li>Call <code>clGetPlatformInfo</code> with
+<code>CL_PLATFORM_EXTENSIONS</code> (for platform-level extensions) or
+<code>clGetDeviceInfo</code> with <code>CL_DEVICE_EXTENSIONS</code> (for
+device-level extensions).</li>
+<li>The runtime returns a space-delimited string containing all
+supported extension names (for example,
+<code>"cl_khr_gl_sharing cl_nv_compiler_options"</code>).</li>
+<li>Search the string to ensure the target extension name is
+present.</li>
+</ol>
+<h3 id="step-2-define-the-function-pointer-signature">Step 2: Define the
+Function Pointer Signature</h3>
+<p>Extension headers, such as <code>CL/cl_ext.h</code>, define the
+prototypes and corresponding function pointer types for standard Khronos
+and vendor extensions. If the header does not define the type, you must
+define a function pointer type matching the extension's signature
+manually:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">typedef</span> cl_int <span class="op">(</span>CL_API_CALL <span class="op">*</span>clGetGLContextInfoKHR_fn<span class="op">)(</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> cl_context_properties <span class="op">*</span>properties<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    cl_gl_context_info param_name<span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> param_value_size<span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">void</span> <span class="op">*</span>param_value<span class="op">,</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">size_t</span> <span class="op">*</span>param_value_size_ret</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<h3 id="step-3-retrieve-the-function-address">Step 3: Retrieve the
+Function Address</h3>
+<p>OpenCL 1.2 introduced
+<code>clGetExtensionFunctionAddressForPlatform</code>, which replaced
+the legacy OpenCL 1.0/1.1 function
+<code>clGetExtensionFunctionAddress</code>. The modern API ensures that
+function pointers are queried within the context of a specific platform,
+which is critical when multiple vendors' drivers are installed on the
+same system.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">void</span><span class="op">*</span> clGetExtensionFunctionAddressForPlatform<span class="op">(</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    cl_platform_id platform<span class="op">,</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> <span class="dt">char</span> <span class="op">*</span>func_name</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<p>Pass the target <code>cl_platform_id</code> and the exact string name
+of the extension function. The ICD loader routes this call to the
+vendor-specific runtime matching the specified platform. If the function
+is supported, the API returns a valid pointer; otherwise, it returns
+<code>NULL</code>.</p>
+<h3 id="step-4-cast-and-execute">Step 4: Cast and Execute</h3>
+<p>Once the address is obtained, cast the generic <code>void*</code>
+return value to your defined function pointer type. Validate that the
+pointer is non-null before invoking it:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>clGetGLContextInfoKHR_fn my_clGetGLContextInfoKHR <span class="op">=</span> </span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">(</span>clGetGLContextInfoKHR_fn<span class="op">)</span> clGetExtensionFunctionAddressForPlatform<span class="op">(</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>        platform<span class="op">,</span> </span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;clGetGLContextInfoKHR&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">);</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="op">(</span>my_clGetGLContextInfoKHR <span class="op">!=</span> NULL<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Invoke the extension function as a regular function call</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    cl_int err <span class="op">=</span> my_clGetGLContextInfoKHR<span class="op">(...);</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span> <span class="cf">else</span> <span class="op">{</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Handle error: Function not implemented or platform mismatch</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Through this mechanism, OpenCL applications can use vendor-specific
+hardware features, debug utilities, and custom memory-sharing mechanisms
+without breaking binary compatibility across disparate OpenCL
+implementations.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

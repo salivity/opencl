@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filtering OpenCL Devices with clGetDeviceIDs - opencl</title>
+    <meta name="description" content="This article explains how the OpenCL API function clGetDeviceIDs enables developers to query, filter, and select specific hardware devices on a host system. By querying available platforms and applying bitfield device-type masks, developers can programma">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/filtering-open-cl-devices-with-cl-get-device-i-ds">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Filtering OpenCL Devices with clGetDeviceIDs - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/filtering-open-cl-devices-with-cl-get-device-i-ds" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explains how the OpenCL API function clGetDeviceIDs enables developers to query, filter, and select specific hardware devices on a host system. By querying available platforms and applying bitfield device-type masks, developers can programma" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="filtering-opencl-devices-with-clgetdeviceids">Filtering OpenCL
+Devices with clGetDeviceIDs</h1>
+<p>This article explains how the OpenCL API function
+<code>clGetDeviceIDs</code> enables developers to query, filter, and
+select specific hardware devices on a host system. By querying available
+platforms and applying bitfield device-type masks, developers can
+programmatically target specific architectures—such as discrete GPUs,
+multi-core CPUs, or dedicated accelerators—ensuring workloads execute on
+the most appropriate compute hardware.</p>
+<h3 id="the-role-of-clgetdeviceids">The Role of
+<code>clGetDeviceIDs</code></h3>
+<p>In OpenCL, host systems often contain heterogeneous compute hardware,
+ranging from integrated graphics chips to high-performance accelerators.
+The <code>clGetDeviceIDs</code> function acts as the primary hardware
+discovery mechanism. It retrieves a list of devices available under a
+specific OpenCL platform that match criteria provided by the
+developer.</p>
+<p>Its standard C function signature is:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>cl_int clGetDeviceIDs<span class="op">(</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    cl_platform_id   platform<span class="op">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    cl_device_type   device_type<span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    cl_uint          num_entries<span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    cl_device_id    <span class="op">*</span>devices<span class="op">,</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    cl_uint         <span class="op">*</span>num_devices</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">);</span></span></code></pre></div>
+<h3 id="filtering-mechanisms">Filtering Mechanisms</h3>
+<p>Developers use the parameters of <code>clGetDeviceIDs</code> to
+narrow down the target hardware through three main approaches:</p>
+<h4 id="1-platform-level-scoping">1. Platform-Level Scoping</h4>
+<p>Filtering begins with the <code>platform</code> parameter. Because
+different hardware vendors (such as NVIDIA, AMD, or Intel) provide
+distinct OpenCL platform implementations, specifying a particular
+<code>platform_id</code> restricts the device search exclusively to
+hardware managed by that vendor's runtime.</p>
+<h4 id="2-device-type-masking">2. Device Type Masking</h4>
+<p>The <code>device_type</code> parameter provides the direct mechanism
+for filtering. Developers can pass specific bit flags to target
+architectural categories:</p>
+<ul>
+<li><code>CL_DEVICE_TYPE_CPU</code>: Filters strictly for the host
+processor or host compute units.</li>
+<li><code>CL_DEVICE_TYPE_GPU</code>: Filters for graphics processing
+units, covering both integrated and discrete models.</li>
+<li><code>CL_DEVICE_TYPE_ACCELERATOR</code>: Targets dedicated OpenCL
+acceleration hardware, such as FPGAs or DSPs.</li>
+<li><code>CL_DEVICE_TYPE_DEFAULT</code>: Queries only the default OpenCL
+device assigned by the chosen platform.</li>
+<li><code>CL_DEVICE_TYPE_ALL</code>: Bypasses hardware classification
+filtering to return all compatible devices on the platform.</li>
+</ul>
+<p>These flags can also be combined using the bitwise OR operator (e.g.,
+<code>CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR</code>) to query
+multiple hardware categories in a single call while excluding others,
+such as standard CPUs.</p>
+<h4 id="3-count-discovery-and-dynamic-allocation">3. Count Discovery and
+Dynamic Allocation</h4>
+<p><code>clGetDeviceIDs</code> supports a two-step query pattern to
+dynamically allocate memory for matching devices:</p>
+<ol type="1">
+<li><strong>Count Retrieval:</strong> Pass <code>0</code> to
+<code>num_entries</code> and <code>NULL</code> to the
+<code>devices</code> buffer while supplying the desired
+<code>device_type</code>. The function populates the
+<code>num_devices</code> pointer with the exact count of matching
+devices.</li>
+<li><strong>Device Retrieval:</strong> Allocate an array of
+<code>cl_device_id</code> based on the returned count, then invoke
+<code>clGetDeviceIDs</code> a second time with the allocated buffer and
+buffer size to retrieve the actual device handles.</li>
+</ol>
+<p>If no devices match the specified filter flag on the given platform,
+the function returns the error code <code>CL_DEVICE_NOT_FOUND</code>,
+allowing the host application to handle the absence of specific hardware
+gracefully.</p>
+<h3 id="secondary-filtering-with-clgetdeviceinfo">Secondary Filtering
+with <code>clGetDeviceInfo</code></h3>
+<p>While <code>clGetDeviceIDs</code> effectively partitions devices by
+broad hardware classes, developers frequently combine it with
+<code>clGetDeviceInfo</code> for fine-grained selection. After obtaining
+candidate device IDs through <code>clGetDeviceIDs</code>, developers can
+iterate through the list to filter by attributes such as:</p>
+<ul>
+<li>Double-precision support (<code>cl_khr_fp64</code>)</li>
+<li>Available global and local memory capacity
+(<code>CL_DEVICE_GLOBAL_MEM_SIZE</code>)</li>
+<li>Compute unit count (<code>CL_DEVICE_MAX_COMPUTE_UNITS</code>)</li>
+<li>Unified memory architectures
+(<code>CL_DEVICE_HOST_UNIFIED_MEMORY</code>)</li>
+</ul>
+<p>This two-tier strategy—coarse architectural filtering via
+<code>clGetDeviceIDs</code> followed by property inspection via
+<code>clGetDeviceInfo</code>—gives developers full control over OpenCL
+hardware selection across heterogeneous platforms.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

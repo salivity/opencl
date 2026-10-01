@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parallel k-NN Search Implementation in OpenCL - opencl</title>
+    <meta name="description" content="This article examines the primary techniques used to implement parallel k-nearest neighbor (k-NN) search algorithms using the OpenCL framework. Implementing k-NN efficiently on heterogeneous hardware, such as GPUs and multi-core CPUs, requires optimizing">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/parallel-k-nn-search-implementation-in-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Parallel k-NN Search Implementation in OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/parallel-k-nn-search-implementation-in-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article examines the primary techniques used to implement parallel k-nearest neighbor (k-NN) search algorithms using the OpenCL framework. Implementing k-NN efficiently on heterogeneous hardware, such as GPUs and multi-core CPUs, requires optimizing" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="parallel-k-nn-search-implementation-in-opencl">Parallel k-NN
+Search Implementation in OpenCL</h1>
+<p>This article examines the primary techniques used to implement
+parallel k-nearest neighbor (k-NN) search algorithms using the OpenCL
+framework. Implementing k-NN efficiently on heterogeneous hardware, such
+as GPUs and multi-core CPUs, requires optimizing memory bandwidth,
+restructuring search algorithms for massive concurrency, and minimizing
+synchronization overhead. The following sections outline the essential
+strategies—from brute-force matrix optimizations to spatial acceleration
+structures—that maximize parallel k-NN performance in OpenCL.</p>
+<h2 id="work-item-and-ndrange-mapping">Work-Item and NDRange
+Mapping</h2>
+<p>The fundamental brute-force (exhaustive) k-NN approach calculates the
+Euclidean distance between every query point and every reference point.
+In OpenCL, this is parallelized across an <code>NDRange</code> grid. The
+standard mapping assigns one OpenCL work-item to compute distances for a
+single query point across all reference points, or maps a 2D work-group
+grid where dimensions correspond to blocks of queries and references.
+This fine-grained decomposition ensures high occupancy across GPU
+compute units.</p>
+<h2 id="tiling-with-local-memory">Tiling with Local Memory</h2>
+<p>Global memory latency is often the primary bottleneck in parallel
+distance calculations. To resolve this, OpenCL implementations use
+tiling strategies via the <code>__local</code> address space. A
+work-group loads a tile of reference points and a tile of query points
+into high-speed on-chip local memory cooperatively. Work-items then
+calculate pairwise distances against this cached subset before
+synchronizing with a <code>barrier(CLK_LOCAL_MEM_FENCE)</code> and
+loading the next tile. This drastically reduces global memory
+transactions by reusing data across adjacent threads.</p>
+<h2 id="simd-vectorization">SIMD Vectorization</h2>
+<p>Data points in k-NN often represent feature vectors with multiple
+dimensions (e.g., coordinates in 3D, 4D, or higher feature spaces).
+OpenCL provides built-in vector types such as <code>float4</code>,
+<code>float8</code>, and <code>float16</code>. Organizing feature data
+into Structure-of-Arrays (SoA) and loading coordinates into these native
+vector types enables the compiler to generate Single Instruction,
+Multiple Data (SIMD) operations. This maximizes arithmetic throughput
+during pairwise distance calculations (e.g., fused multiply-add
+operations via <code>fma</code>).</p>
+<h2 id="parallel-selection-and-heap-strategies">Parallel Selection and
+Heap Strategies</h2>
+<p>Finding the nearest <span class="math inline">\(k\)</span> elements
+out of <span class="math inline">\(N\)</span> distances without sorting
+the entire array is critical to maintaining high throughput:</p>
+<ul>
+<li><strong>Per-Thread Priority Queues:</strong> For very small values
+of <span class="math inline">\(k\)</span> (e.g., <span
+class="math inline">\(k \le 16\)</span>), each work-item can maintain a
+small max-heap or sorted insertion list in private registers. As new
+distances are computed, they are compared against the current worst
+candidate in constant or logarithmic time.</li>
+<li><strong>Truncated Bitonic Sort:</strong> For moderate <span
+class="math inline">\(k\)</span> values, distances computed by a
+work-group are loaded into local memory, where a parallel bitonic
+sorting network sorts and prunes the candidates iteratively.</li>
+<li><strong>Radix Select:</strong> For large sets, parallel radix
+selection algorithms partition distance values across work-groups,
+isolating the <span class="math inline">\(k\)</span>-smallest candidates
+in linear time without requiring a full sort.</li>
+</ul>
+<h2 id="stackless-tree-traversal">Stackless Tree Traversal</h2>
+<p>While brute-force k-NN scales well on GPUs for small datasets or very
+high dimensions, spatial indexing structures such as k-d trees, octrees,
+and Bounding Volume Hierarchies (BVH) are preferred for low-dimensional,
+large-scale data. Standard recursive tree traversal is inefficient on
+GPUs due to divergent branch execution and lack of a traditional call
+stack.</p>
+<p>To overcome this in OpenCL:</p>
+<ul>
+<li><strong>Flattened Arrays:</strong> Trees are linearized into flat
+arrays stored in <code>__global</code> memory, where node links are
+represented by integer indices.</li>
+<li><strong>Stackless Traversal (Rope Trees):</strong> Nodes include
+"rope" or escape pointers that point directly to the next node to visit
+upon miss or completion, eliminating the need for a traversal
+stack.</li>
+<li><strong>Fixed-Size Register Stacks:</strong> When escape pointers
+are not viable, trees are traversed using small, bit-packed integer
+stacks held entirely in thread-private registers to avoid spilling to
+global memory.</li>
+</ul>
+<h2 id="uniform-spatial-grids">Uniform Spatial Grids</h2>
+<p>For spatial domains with uniform point distribution, uniform grid
+binning offers an alternative to tree structures. The reference dataset
+is partitioned into 3D cells via an OpenCL prefix sum (scan) and sort
+pipeline, creating an indexed grid. Each work-item searches only the
+cell containing the query point and the immediately adjacent neighboring
+cells. This approach minimizes divergence because neighbor-cell offsets
+are regular, deterministic, and map cleanly to parallel memory access
+patterns.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

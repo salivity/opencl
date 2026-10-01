@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Why Pass the Khronos CTS for OpenCL Conformance - opencl</title>
+    <meta name="description" content="Hardware vendors must successfully pass the Khronos Conformance Test Suite (CTS) before marketing their products as OpenCL conformant due to strict legal, trademark, and technical interoperability requirements. OpenCL is not merely an open standard; it i">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/why-pass-the-khronos-cts-for-open-cl-conformance">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Why Pass the Khronos CTS for OpenCL Conformance - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/why-pass-the-khronos-cts-for-open-cl-conformance" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Hardware vendors must successfully pass the Khronos Conformance Test Suite (CTS) before marketing their products as OpenCL conformant due to strict legal, trademark, and technical interoperability requirements. OpenCL is not merely an open standard; it i" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="why-pass-the-khronos-cts-for-opencl-conformance">Why Pass the
+Khronos CTS for OpenCL Conformance</h1>
+<p>Hardware vendors must successfully pass the Khronos Conformance Test
+Suite (CTS) before marketing their products as OpenCL conformant due to
+strict legal, trademark, and technical interoperability requirements.
+OpenCL is not merely an open standard; it is a legally protected
+trademark owned by Apple Inc. and administered by the Khronos Group.
+This article explains how the CTS acts as the gatekeeper for
+intellectual property rights, API portability, and legal protection
+against trademark infringement.</p>
+<h3 id="trademark-law-and-the-adopters-agreement">Trademark Law and the
+Adopters Agreement</h3>
+<p>The name "OpenCL" and the associated OpenCL logo are registered
+trademarks. To use these marks commercially—such as on packaging, spec
+sheets, marketing collateral, or runtime drivers—a hardware vendor must
+execute a Khronos OpenCL Adopters Agreement.</p>
+<p>Under this binding contract, the trademark license is conditional.
+The agreement explicitly stipulates that the right to claim OpenCL
+support or display the logo is only granted once an implementation
+passes the designated CTS for that specific API version and is
+officially accepted by the Khronos Working Group. Marketing a
+non-certified implementation violates this contract and constitutes
+trademark infringement.</p>
+<h3 id="ensuring-cross-platform-portability">Ensuring Cross-Platform
+Portability</h3>
+<p>The primary technical goal of OpenCL is to enable cross-platform,
+heterogeneous parallel computing across CPUs, GPUs, DSPs, and FPGAs. If
+vendors could claim OpenCL support without verification, minor
+deviations from the specification would cause software to fail across
+different hardware.</p>
+<p>The Khronos CTS consists of thousands of automated tests that
+verify:</p>
+<ul>
+<li>Exact mathematical precision and rounding modes.</li>
+<li>Proper execution of the OpenCL C and SPIR-V specifications.</li>
+<li>Memory model consistency and synchronization primitives.</li>
+<li>Complete and correct implementation of all required core API entry
+points.</li>
+</ul>
+<p>By making CTS passage mandatory, Khronos prevents fragmentation,
+ensuring that developers can rely on consistent behavior regardless of
+the underlying silicon.</p>
+<h3 id="patent-indemnification-and-intellectual-property">Patent
+Indemnification and Intellectual Property</h3>
+<p>Beyond trademark usage, CTS validation unlocks vital intellectual
+property protections. Khronos operates under a defined intellectual
+property framework where participating members grant reciprocal,
+royalty-free patent licenses covering the specification.</p>
+<p>This patent indemnity, often referred to as a "safe harbor," applies
+exclusively to conformant implementations. If a vendor distributes a
+non-conformant implementation, they—and potentially their
+customers—forfeit these cross-licensing protections, exposing themselves
+to patent litigation from other member companies.</p>
+<h3 id="the-formal-review-process">The Formal Review Process</h3>
+<p>Passing the CTS locally is not enough. To legally finalize
+conformance, vendors must complete a structured submission process:</p>
+<ol type="1">
+<li><strong>Test Execution:</strong> The vendor runs the full CTS suite
+on their designated hardware and operating system, generating complete,
+unaltered test logs.</li>
+<li><strong>Confidential Submission:</strong> The results and runtime
+configurations are submitted to the Khronos OpenCL Working Group for
+formal review.</li>
+<li><strong>Peer Review:</strong> Working group members have a mandatory
+30-day window to scrutinize the test results, identify potential
+discrepancies, and raise challenges.</li>
+<li><strong>Official Listing:</strong> If no issues are found, or once
+all challenges are resolved, Khronos registers the product on the
+official Khronos Conformant Products list.</li>
+</ol>
+<p>Only after the product is officially listed can the vendor legally
+state that their hardware or driver conforms to the OpenCL standard.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

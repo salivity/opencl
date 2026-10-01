@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL 1.2 Image Read and Write Restrictions - opencl</title>
+    <meta name="description" content="In OpenCL 1.2, developers face strict limitations when attempting to simultaneously read from and write to the same image object within a single kernel. Unlike general memory buffers, image objects are subject to hardware-level texture and surface pipeli">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-1-2-image-read-and-write-restrictions">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL 1.2 Image Read and Write Restrictions - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-1-2-image-read-and-write-restrictions" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL 1.2, developers face strict limitations when attempting to simultaneously read from and write to the same image object within a single kernel. Unlike general memory buffers, image objects are subject to hardware-level texture and surface pipeli" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-12-image-read-and-write-restrictions">OpenCL 1.2 Image
+Read and Write Restrictions</h1>
+<p>In OpenCL 1.2, developers face strict limitations when attempting to
+simultaneously read from and write to the same image object within a
+single kernel. Unlike general memory buffers, image objects are subject
+to hardware-level texture and surface pipeline optimizations that
+enforce access exclusivity. This article outlines the access qualifier
+restrictions, the consequences of argument aliasing, memory coherency
+barriers, and standard architectural workarounds in OpenCL 1.2.</p>
+<h3 id="access-qualifier-constraints">Access Qualifier Constraints</h3>
+<p>In OpenCL 1.2, image objects cannot be declared with simultaneous
+read and write capabilities. The specification restricts image arguments
+to either the <code>__read_only</code> (or <code>read_only</code>)
+qualifier or the <code>__write_only</code> (or <code>write_only</code>)
+qualifier. The <code>__read_write</code> qualifier for image types was
+only introduced in later specifications (OpenCL 2.0) and is not legally
+available in OpenCL 1.2. Consequently, a single image variable inside a
+kernel cannot execute both <code>read_image*</code> and
+<code>write_image*</code> functions.</p>
+<h3 id="argument-aliasing-and-undefined-behavior">Argument Aliasing and
+Undefined Behavior</h3>
+<p>A common workaround developers attempt is passing the same underlying
+host-side image object (<code>cl_mem</code>) to two separate kernel
+arguments—one qualified as <code>__read_only</code> and the other as
+<code>__write_only</code>. Under OpenCL 1.2, this produces undefined
+behavior.</p>
+<p>The OpenCL 1.2 specification states that if a memory object is
+written to by a kernel, it cannot be simultaneously read by the same
+kernel via another argument unless the reads and writes are strictly
+disjoint and explicitly supported, which is not guaranteed for images.
+Hardware drivers typically bind read images to texture sampling hardware
+and write images to frame-buffer or surface-store units. Because these
+paths maintain separate, non-coherent caches, modifying an image through
+the write path will not reliably update the read cache during the same
+dispatch.</p>
+<h3 id="lack-of-intra-kernel-synchronization-for-images">Lack of
+Intra-Kernel Synchronization for Images</h3>
+<p>Even if a developer attempts to coordinate access between work-items
+using work-group barriers (<code>barrier(CLK_GLOBAL_MEM_FENCE)</code> or
+<code>barrier(CLK_LOCAL_MEM_FENCE)</code>), OpenCL 1.2 provides no
+memory fence operation specifically tailored to synchronize image caches
+across work-items. Barriers guarantee completion and visibility for
+standard memory buffers, but they do not enforce coherency across mixed
+read-write texture pipelines.</p>
+<h3 id="standard-workarounds-in-opencl-12">Standard Workarounds in
+OpenCL 1.2</h3>
+<p>To modify and read image data within the constraints of OpenCL 1.2,
+implementations must use alternative architectural patterns:</p>
+<ul>
+<li><strong>Ping-Pong Buffering:</strong> Allocate two separate image
+objects of the same format and dimensions. One image serves as the
+read-only source for the first dispatch, while the second serves as the
+write-only destination. Subsequent iterations swap the roles of these
+images across separate <code>clEnqueueNDRangeKernel</code> calls,
+utilizing host-level event synchronization.</li>
+<li><strong>Conversion to Linear Buffers:</strong> When simultaneous
+in-place read and write operations are strictly necessary within a
+single execution pass, data must be stored in standard linear buffer
+objects (<code>cl_mem</code> created with
+<code>CL_MEM_READ_WRITE</code>). Linear buffers support read-write
+qualifiers and adhere to standard global memory fence semantics, though
+they forfeit hardware-accelerated texture filtering, normalized
+addressing, and border clamping.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

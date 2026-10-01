@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimal Parallel Prefix-Sum Scan in OpenCL C - opencl</title>
+    <meta name="description" content="This article outlines the optimal strategy for implementing an inclusive or exclusive parallel prefix-sum (scan) in OpenCL C across modern GPU architectures. It details why a multi-pass hierarchical block scan—combining vectorized work-item loading, lo">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/optimal-parallel-prefix-sum-scan-in-open-cl-c">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Optimal Parallel Prefix-Sum Scan in OpenCL C - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/optimal-parallel-prefix-sum-scan-in-open-cl-c" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article outlines the optimal strategy for implementing an inclusive or exclusive parallel prefix-sum (scan) in OpenCL C across modern GPU architectures. It details why a multi-pass hierarchical block scan—combining vectorized work-item loading, lo" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="optimal-parallel-prefix-sum-scan-in-opencl-c">Optimal Parallel
+Prefix-Sum Scan in OpenCL C</h1>
+<p>This article outlines the optimal strategy for implementing an
+inclusive or exclusive parallel prefix-sum (scan) in OpenCL C across
+modern GPU architectures. It details why a multi-pass hierarchical block
+scan—combining vectorized work-item loading, local memory reduction, and
+subgroup shuffles—delivers the highest throughput and computational
+efficiency, and highlights the core techniques required to eliminate
+bank conflicts and fully saturate device memory bandwidth.</p>
+<h2 id="algorithmic-foundation-choosing-the-right-base-scan">Algorithmic
+Foundation: Choosing the Right Base Scan</h2>
+<p>Parallel prefix-sum algorithms fall into two primary algorithmic
+categories:</p>
+<ol type="1">
+<li><strong>Hillis-Steele (Step-Efficient):</strong> Performs <span
+class="math inline">\(O(N \log N)\)</span> operations in <span
+class="math inline">\(O(\log N)\)</span> parallel steps. While
+step-efficient, it performs more total additions than a sequential scan,
+making it suboptimal for large datasets. However, it excels inside
+small, lock-step execution units such as sub-groups (warps or
+wavefronts).</li>
+<li><strong>Blelloch (Work-Efficient):</strong> Performs <span
+class="math inline">\(O(N)\)</span> operations with a tree-based
+up-sweep (reduce) and down-sweep phase. This matches the computational
+complexity of the sequential algorithm, making it ideal for scaling to
+thousands or millions of elements.</li>
+</ol>
+<p>The optimal strategy uses a <strong>hybrid hierarchical
+approach</strong>: Blelloch-style work distribution across global memory
+and work-groups, combined with Hillis-Steele or hardware shuffle
+intrinsics at the sub-group level.</p>
+<h2 id="the-optimal-strategy-hierarchical-multi-pass-block-scan">The
+Optimal Strategy: Hierarchical Multi-Pass Block Scan</h2>
+<p>Because GPUs execute work-groups independently without a standard
+global synchronization barrier in OpenCL, the industry-standard, fully
+portable, and high-throughput approach is a three-phase hierarchical
+scan:</p>
+<ol type="1">
+<li><strong>Phase 1: Local Tile Scan &amp; Block Sum Generation</strong>
+<ul>
+<li>Divide the input array into uniform blocks mapped to
+work-groups.</li>
+<li>Each work-group scans its assigned tile into <code>__local</code>
+memory.</li>
+<li>The final sum of each block is written out to an auxiliary
+<code>block_sums</code> buffer.</li>
+</ul></li>
+<li><strong>Phase 2: Global Block-Sum Scan</strong>
+<ul>
+<li>Execute a scan on the auxiliary <code>block_sums</code> buffer.</li>
+<li>If the number of blocks fits within a single work-group tile, this
+runs in a single dispatch. If the dataset spans millions of elements and
+requires many blocks, recursively apply Phase 1 and Phase 2.</li>
+</ul></li>
+<li><strong>Phase 3: Uniform Add Distribution</strong>
+<ul>
+<li>Launch a final kernel where each work-group takes the corresponding
+scanned block sum from the auxiliary buffer and adds it to all elements
+in its original tile.</li>
+</ul></li>
+</ol>
+<pre><code>Input Array:     [ x0, x1, x2, ... | xk, ... ]
+                       │
+Phase 1:        Local Scan per Block ──&gt; Write Block Sums: [ S0, S1, ... ]
+                       │                                         │
+Phase 2:               │                                  Scan Block Sums
+                       │                                         │
+Phase 3:        Add [ Scanned S(i-1) ] to Block(i) &lt;─────────────┘
+                       │
+Final Output:    [ Prefix Summed Array ]</code></pre>
+<h2 id="critical-implementation-optimizations-in-opencl-c">Critical
+Implementation Optimizations in OpenCL C</h2>
+<p>To achieve near-memory-bandwidth limits (roofline saturation), apply
+the following performance optimizations within the OpenCL C kernels:</p>
+<h3 id="1-increase-work-per-work-item-tile-processing">1. Increase Work
+Per Work-Item (Tile Processing)</h3>
+<p>Avoid the naive 1-element-per-work-item pattern. Launch work-groups
+where each work-item sequentially loads and processes multiple elements
+(e.g., 4 to 8 elements using vectors like <code>int4</code> or
+<code>float4</code>).</p>
+<ul>
+<li><strong>Memory Coalescing:</strong> Vectorized loads
+(<code>vload4</code> or direct pointer casts) maximize memory bus
+utilization.</li>
+<li><strong>Instruction-Level Parallelism (ILP):</strong> Processing
+multiple elements per thread hides memory latency and amortizes the
+overhead of <code>barrier(CLK_LOCAL_MEM_FENCE)</code>.</li>
+</ul>
+<h3 id="2-utilize-subgroup-intrinsics">2. Utilize Subgroup
+Intrinsics</h3>
+<p>Modern OpenCL platforms (via OpenCL 2.x or the
+<code>cl_khr_subgroups</code> extension) provide native
+warp/wavefront-level scan primitives:</p>
+<ul>
+<li>Use <code>sub_group_scan_inclusive_add()</code> or
+<code>sub_group_scan_exclusive_add()</code>.</li>
+<li>Subgroup operations bypass local memory entirely, performing the
+scan within physical registers at hardware speed.</li>
+</ul>
+<h3 id="3-mitigate-local-memory-bank-conflicts">3. Mitigate Local Memory
+Bank Conflicts</h3>
+<p>If relying on software-implemented tree reductions in
+<code>__local</code> memory, strided accesses during up-sweep and
+down-sweep stages can cause shared memory bank conflicts:</p>
+<ul>
+<li>Apply an address transformation to pad local memory indices:
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#define BANK_OFFSET</span><span class="op">(</span><span class="pp">idx</span><span class="op">)</span><span class="pp"> </span><span class="op">((</span><span class="pp">idx</span><span class="op">)</span><span class="pp"> </span><span class="op">&gt;&gt;</span><span class="pp"> </span><span class="dv">5</span><span class="op">)</span><span class="pp"> </span><span class="co">// Assuming 32 banks</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>local_buffer<span class="op">[</span>idx <span class="op">+</span> BANK_OFFSET<span class="op">(</span>idx<span class="op">)]</span> <span class="op">=</span> value<span class="op">;</span></span></code></pre></div></li>
+<li>Alternatively, structure the work-group scan using an aggregate
+subgroup approach: each subgroup scans its own registers, writes the
+aggregate to local memory, one subgroup scans the aggregates, and the
+results are distributed back.</li>
+</ul>
+<h3 id="4-single-pass-decoupled-look-back-alternative-for-opencl-20">4.
+Single-Pass Decoupled Look-Back (Alternative for OpenCL 2.0+)</h3>
+<p>For targets supporting OpenCL 2.0 fine-grained system atomics and
+acquire-release semantics (<code>memory_order_acquire</code>,
+<code>memory_order_release</code>), the state-of-the-art alternative to
+a 3-phase kernel launch is the <strong>Decoupled Look-Back</strong>
+algorithm.</p>
+<ul>
+<li>Work-groups claim a tile dynamically via an atomic counter.</li>
+<li>A status flag per tile publishes whether its aggregate is valid or
+prefix-computed.</li>
+<li>A block scans backward across prior blocks to aggregate preceding
+sums without synchronizing the entire GPU via host kernel
+dispatches.</li>
+<li>This achieves single-pass execution, keeping intermediate sums
+strictly on-chip inside L2/L1 cache.</li>
+</ul>
+<h2 id="summary">Summary</h2>
+<p>The optimal, standard-compliant strategy in OpenCL C is a
+<strong>hierarchical multi-pass scan</strong> utilizing vectorized loads
+(<code>float4</code>/<code>int4</code>) and 4–8 values per thread.
+Within work-groups, performance is maximized by delegating execution to
+<strong>subgroup shuffle intrinsics</strong> and minimizing
+<code>__local</code> memory barriers. This layout eliminates divergent
+branches, prevents memory bank conflicts, and sustains execution near
+the hardware memory bandwidth limits.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

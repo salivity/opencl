@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Why OpenCL Uses Separate Contexts Per Vendor - opencl</title>
+    <meta name="description" content="In production environments, OpenCL applications routinely initialize separate contexts for distinct hardware vendors rather than attempting to bundle all available devices into a unified environment. While OpenCL provides an abstraction layer across dive">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/why-open-cl-uses-separate-contexts-per-vendor">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Why OpenCL Uses Separate Contexts Per Vendor - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/why-open-cl-uses-separate-contexts-per-vendor" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In production environments, OpenCL applications routinely initialize separate contexts for distinct hardware vendors rather than attempting to bundle all available devices into a unified environment. While OpenCL provides an abstraction layer across dive" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="why-opencl-uses-separate-contexts-per-vendor">Why OpenCL Uses
+Separate Contexts Per Vendor</h1>
+<p>In production environments, OpenCL applications routinely initialize
+separate contexts for distinct hardware vendors rather than attempting
+to bundle all available devices into a unified environment. While OpenCL
+provides an abstraction layer across diverse computing hardware,
+real-world deployments must contend with distinct vendor platforms,
+proprietary driver implementations, and varied hardware architectures.
+Creating dedicated contexts per vendor provides fault isolation, adheres
+strictly to the OpenCL specification regarding platforms, and allows
+developers to tailor memory management and dispatch pipelines to
+specific hardware targets without risking application-wide
+instability.</p>
+<h3 id="platform-architecture-and-the-icd-loader">Platform Architecture
+and the ICD Loader</h3>
+<p>The OpenCL Installable Client Driver (ICD) model treats each vendor’s
+driver as an independent platform (<code>cl_platform_id</code>). Under
+the standard specification, a context (<code>cl_context</code>) is tied
+directly to a single platform. Because platforms cannot span across
+multiple vendor implementations—such as an integrated Intel GPU and a
+discrete NVIDIA GPU—an application cannot create a single context
+spanning both devices. Production systems must query each platform
+independently and instantiate dedicated contexts to target devices
+managed by different vendor drivers.</p>
+<h3 id="driver-isolation-and-fault-tolerance">Driver Isolation and Fault
+Tolerance</h3>
+<p>Graphics and compute drivers are complex software stacks that can
+behave unpredictably under heavy workloads. By isolating vendors into
+separate contexts, production systems establish clear fault domains. If
+a kernel dispatched to one vendor's GPU triggers an unrecoverable driver
+error, a memory fault, or a Timeout Detection and Recovery (TDR) event,
+the failure is generally contained within that context. The application
+can catch the error, log diagnostic data, and continue executing tasks
+on other healthy vendor contexts without suffering a fatal, process-wide
+termination.</p>
+<h3 id="distinct-memory-architectures">Distinct Memory
+Architectures</h3>
+<p>Different vendors employ radically different memory subsystems. A
+discrete GPU typically features high-bandwidth dedicated VRAM
+communicating over a PCIe bus, whereas an integrated GPU or CPU uses
+shared system memory. Memory allocation strategies, zero-copy
+operations, and buffer mapping flags (such as
+<code>CL_MEM_ALLOC_HOST_PTR</code> or <code>CL_MEM_USE_HOST_PTR</code>)
+behave differently across vendors. Separate contexts allow developers to
+implement specialized memory allocators that exploit the specific memory
+characteristics of each vendor’s device rather than relying on a
+suboptimal, lowest-common-denominator approach.</p>
+<h3 id="kernel-compilation-and-feature-support">Kernel Compilation and
+Feature Support</h3>
+<p>Each vendor implements its own Just-In-Time (JIT) OpenCL compiler
+with vendor-specific extensions, varying OpenCL standard support levels
+(e.g., OpenCL 1.2 vs. 3.0), and unique build options. Attempting to
+manage unified kernel binaries across multiple architectures introduces
+unnecessary friction. Segregating contexts simplifies the pipeline:
+programs (<code>cl_program</code>) are compiled strictly for the devices
+within that vendor’s domain, using custom compiler flags tailored to the
+target microarchitecture without triggering compiler warnings or invalid
+argument errors on other hardware.</p>
+<h3 id="workload-scheduling-and-heterogeneous-dispatch">Workload
+Scheduling and Heterogeneous Dispatch</h3>
+<p>A single context with mixed hardware types complicates task
+scheduling. Integrated GPUs, discrete accelerators, and multi-core CPUs
+require distinct work-group sizes, dispatch cadences, and queue
+management strategies. Decoupling vendors into their own contexts
+naturally mirrors an architecture where independent worker threads
+manage dedicated command queues (<code>cl_command_queue</code>). This
+structure maximizes throughput, eliminates lock contention across driver
+boundaries, and enables accurate performance profiling and load
+balancing based on the specific computing capability of each physical
+device.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

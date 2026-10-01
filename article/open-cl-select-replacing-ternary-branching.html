@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Select: Replacing Ternary Branching - opencl</title>
+    <meta name="description" content="This article explores the OpenCL select built-in function, its role as a branchless alternative to the standard ternary operator, and its performance benefits on SIMD architectures. You will learn the mechanics of the select instruction, how vector condi">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-select-replacing-ternary-branching">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Select: Replacing Ternary Branching - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-select-replacing-ternary-branching" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explores the OpenCL select built-in function, its role as a branchless alternative to the standard ternary operator, and its performance benefits on SIMD architectures. You will learn the mechanics of the select instruction, how vector condi" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-select-replacing-ternary-branching">OpenCL Select:
+Replacing Ternary Branching</h1>
+<p>This article explores the OpenCL <code>select</code> built-in
+function, its role as a branchless alternative to the standard ternary
+operator, and its performance benefits on SIMD architectures. You will
+learn the mechanics of the <code>select</code> instruction, how vector
+condition masks work, and why avoiding warp or wavefront divergence
+leads to faster kernel execution on modern GPUs.</p>
+<h3 id="the-problem-with-ternary-branching-in-opencl">The Problem with
+Ternary Branching in OpenCL</h3>
+<p>In standard C and OpenCL C, simple conditional assignments are
+frequently written using the ternary operator:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> result <span class="op">=</span> <span class="op">(</span>condition<span class="op">)</span> <span class="op">?</span> value_if_true <span class="op">:</span> value_if_false<span class="op">;</span></span></code></pre></div>
+<p>While convenient, standard control-flow branches and ternary
+expressions can cause performance bottlenecks on SIMD (Single
+Instruction, Multiple Data) and SIMT (Single Instruction, Multiple
+Threads) architectures such as GPUs. Threads execute in groups called
+warps or wavefronts. When different work-items within the same group
+evaluate a condition differently, execution divergence occurs. The
+hardware must serialize the execution of both paths, disabling
+work-items that do not participate in a given branch.</p>
+<p>Furthermore, the standard ternary operator cannot be used across
+vector types natively (e.g., choosing components between two
+<code>float4</code> vectors based on a <code>int4</code> condition
+vector).</p>
+<h3 id="what-is-the-select-built-in-function">What is the
+<code>select</code> Built-In Function?</h3>
+<p>OpenCL provides the <code>select</code> function as a branchless
+primitive. It maps directly to native hardware conditional move
+instructions (such as <code>csel</code> on ARM, <code>cmov</code> on
+x86, or <code>v_cndmask_b32</code> on AMD GPUs).</p>
+<p>The syntax for <code>select</code> is defined as:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>gentype select<span class="op">(</span>gentype a<span class="op">,</span> gentype b<span class="op">,</span> igentype c<span class="op">);</span></span></code></pre></div>
+<ul>
+<li><code>a</code>: The return value if the condition is false.</li>
+<li><code>b</code>: The return value if the condition is true.</li>
+<li><code>c</code>: The conditional mask.</li>
+</ul>
+<p><strong>Note on argument order:</strong> Unlike the standard ternary
+operator <code>condition ? a : b</code>, the <code>select</code>
+function takes the <strong>false</strong> value as the first argument
+and the <strong>true</strong> value as the second argument:
+<code>select(false_val, true_val, condition)</code>.</p>
+<h3 id="how-the-condition-mask-works">How the Condition Mask Works</h3>
+<p>The behavior of <code>select</code> depends on whether the inputs are
+scalar or vector types:</p>
+<ul>
+<li><strong>For scalar types:</strong> Each bit in <code>c</code> must
+evaluate to 0 or 1 (a boolean). If <code>c</code> evaluates to true
+(non-zero), <code>b</code> is selected; otherwise, <code>a</code> is
+selected.</li>
+<li><strong>For vector types:</strong> Selection is performed
+component-wise based on the <strong>most significant bit (MSB)</strong>
+of each component of <code>c</code>. OpenCL comparison operators (such
+as <code>&gt;</code>, <code>&lt;</code>, <code>==</code>) on vector
+types automatically produce masks with the MSB set for true and 0 for
+false.</li>
+</ul>
+<h3 id="replacing-ternary-branches-with-select">Replacing Ternary
+Branches with <code>select</code></h3>
+<h4 id="scalar-example">Scalar Example</h4>
+<p>A standard clamp or threshold logic using a ternary operator:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Using ternary branching</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> threshold<span class="op">(</span><span class="dt">float</span> x<span class="op">,</span> <span class="dt">float</span> limit<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span>x <span class="op">&gt;</span> limit<span class="op">)</span> <span class="op">?</span> limit <span class="op">:</span> x<span class="op">;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>Can be converted into a branch-free <code>select</code> call:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Using select</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span> threshold<span class="op">(</span><span class="dt">float</span> x<span class="op">,</span> <span class="dt">float</span> limit<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> select<span class="op">(</span>x<span class="op">,</span> limit<span class="op">,</span> x <span class="op">&gt;</span> limit<span class="op">);</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="vector-example">Vector Example</h4>
+<p>Where the ternary operator fails completely is with vector data. The
+<code>select</code> instruction seamlessly applies conditional logic
+across all lanes simultaneously:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Process four elements in parallel without branching</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>float4 a <span class="op">=</span> <span class="op">(</span>float4<span class="op">)(</span><span class="fl">1.0</span><span class="bu">f</span><span class="op">,</span> <span class="fl">5.0</span><span class="bu">f</span><span class="op">,</span> <span class="fl">2.0</span><span class="bu">f</span><span class="op">,</span> <span class="fl">8.0</span><span class="bu">f</span><span class="op">);</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>float4 b <span class="op">=</span> <span class="op">(</span>float4<span class="op">)(</span><span class="fl">2.0</span><span class="bu">f</span><span class="op">,</span> <span class="fl">3.0</span><span class="bu">f</span><span class="op">,</span> <span class="fl">4.0</span><span class="bu">f</span><span class="op">,</span> <span class="fl">1.0</span><span class="bu">f</span><span class="op">);</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">// Generates an int4 mask with MSB set to 1 where true, and 0 where false</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>int4 mask <span class="op">=</span> isgreater<span class="op">(</span>a<span class="op">,</span> b<span class="op">);</span> </span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co">// For each vector lane: if mask MSB is 1, pick b; if 0, pick a</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>float4 min_val <span class="op">=</span> select<span class="op">(</span>a<span class="op">,</span> b<span class="op">,</span> mask<span class="op">);</span> </span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="co">// min_val contains: (1.0f, 3.0f, 2.0f, 1.0f)</span></span></code></pre></div>
+<h3 id="performance-advantages">Performance Advantages</h3>
+<ol type="1">
+<li><strong>Eliminates Control Divergence:</strong> Because
+<code>select</code> calculates both candidate expressions or uses
+predication registers, it guarantees unified instruction flow across all
+threads in a warp or wavefront.</li>
+<li><strong>Native Vectorization:</strong> It allows developers to
+express data-parallel conditional assignments over vector datatypes
+(<code>int4</code>, <code>float8</code>, etc.) in a single
+instruction.</li>
+<li><strong>Optimized Instruction Pipeline:</strong> Replacing branch
+instructions with conditional select instructions prevents pipeline
+flushes and branch prediction overhead in the execution pipeline.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

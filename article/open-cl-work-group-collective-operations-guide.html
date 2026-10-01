@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Work-Group Collective Operations Guide - opencl</title>
+    <meta name="description" content="OpenCL provides a dedicated suite of built-in collective functions designed to coordinate computation and data exchange across all work-items within a single work-group. Introduced primarily in the OpenCL 2.0 C specification, these functions eliminate th">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-work-group-collective-operations-guide">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Work-Group Collective Operations Guide - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-work-group-collective-operations-guide" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL provides a dedicated suite of built-in collective functions designed to coordinate computation and data exchange across all work-items within a single work-group. Introduced primarily in the OpenCL 2.0 C specification, these functions eliminate th" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-work-group-collective-operations-guide">OpenCL Work-Group
+Collective Operations Guide</h1>
+<p>OpenCL provides a dedicated suite of built-in collective functions
+designed to coordinate computation and data exchange across all
+work-items within a single work-group. Introduced primarily in the
+OpenCL 2.0 C specification, these functions eliminate the need to write
+manual parallel reduction or scan algorithms using local memory and
+explicit barriers. This article outlines the specific functions that
+constitute the OpenCL work-group collective operations library,
+categorizing them by their algorithmic roles: broadcast, reduction,
+scan, synchronization, and asynchronous memory transfers.</p>
+<h3 id="broadcast-operations">Broadcast Operations</h3>
+<p>The broadcast function allows a value computed by or assigned to a
+single work-item to be distributed across every work-item in the
+work-group.</p>
+<ul>
+<li><code>work_group_broadcast(T x, size_t local_id)</code></li>
+<li><code>work_group_broadcast(T x, size_t local_id_x, size_t local_id_y)</code></li>
+<li><code>work_group_broadcast(T x, size_t local_id_x, size_t local_id_y, size_t local_id_z)</code></li>
+</ul>
+<p>The broadcast operation takes a scalar or vector type <code>T</code>
+from the work-item identified by the specified local ID coordinate(s)
+and returns that value to all work-items in the work-group.</p>
+<h3 id="reduction-functions">Reduction Functions</h3>
+<p>Work-group reduction functions combine input values from all
+work-items into a single scalar result, which is then made available to
+every work-item in the work-group.</p>
+<h4 id="arithmetic-reductions">Arithmetic Reductions</h4>
+<ul>
+<li><code>work_group_reduce_add(T x)</code>: Computes the sum of
+<code>x</code> across all work-items.</li>
+<li><code>work_group_reduce_min(T x)</code>: Finds the minimum value of
+<code>x</code> across all work-items.</li>
+<li><code>work_group_reduce_max(T x)</code>: Finds the maximum value of
+<code>x</code> across all work-items.</li>
+</ul>
+<p>These operations support signed and unsigned integer types as well as
+floating-point types (including <code>half</code>, <code>float</code>,
+and <code>double</code> where supported).</p>
+<h4 id="logical-reductions">Logical Reductions</h4>
+<ul>
+<li><code>work_group_all(int predicate)</code>: Returns a non-zero value
+to all work-items if <code>predicate</code> evaluates to non-zero for
+all work-items in the work-group; otherwise, returns
+<code>0</code>.</li>
+<li><code>work_group_any(int predicate)</code>: Returns a non-zero value
+to all work-items if <code>predicate</code> evaluates to non-zero for at
+least one work-item in the work-group; otherwise, returns
+<code>0</code>.</li>
+</ul>
+<h3 id="scan-prefix-sum-functions">Scan (Prefix Sum) Functions</h3>
+<p>Scan operations compute generalized prefix sums across the
+work-group, ordered by the 1D linear local ID
+(<code>local_id_z * local_size_y * local_size_x + local_id_y * local_size_x + local_id_x</code>).</p>
+<h4 id="inclusive-scan">Inclusive Scan</h4>
+<p>In an inclusive scan, the result returned to a work-item includes its
+own input value:</p>
+<ul>
+<li><code>work_group_scan_inclusive_add(T x)</code></li>
+<li><code>work_group_scan_inclusive_min(T x)</code></li>
+<li><code>work_group_scan_inclusive_max(T x)</code></li>
+</ul>
+<h4 id="exclusive-scan">Exclusive Scan</h4>
+<p>In an exclusive scan, the result returned to a work-item excludes its
+own input value and includes only values from preceding work-items. The
+identity value (e.g., <code>0</code> for addition, type infinity/min for
+min/max) is returned to the first work-item:</p>
+<ul>
+<li><code>work_group_scan_exclusive_add(T x)</code></li>
+<li><code>work_group_scan_exclusive_min(T x)</code></li>
+<li><code>work_group_scan_exclusive_max(T x)</code></li>
+</ul>
+<h3 id="synchronization-primitives">Synchronization Primitives</h3>
+<p>Collective algorithms depend on strict synchronization among group
+participants:</p>
+<ul>
+<li><code>work_group_barrier(cl_mem_fence_flags flags, memory_scope scope)</code>:
+Synchronizes all work-items in the work-group and enforces memory
+ordering defined by <code>flags</code> (such as
+<code>CLK_LOCAL_MEM_FENCE</code> or <code>CLK_GLOBAL_MEM_FENCE</code>)
+across the designated memory scope.</li>
+</ul>
+<h3 id="asynchronous-work-group-memory-copies">Asynchronous Work-Group
+Memory Copies</h3>
+<p>These functions enable collective, high-throughput memory transfers
+between <code>__global</code> and <code>__local</code> memory:</p>
+<ul>
+<li><code>async_work_group_copy(local/global T *dst, const global/local T *src, size_t num_elements, event_t event)</code>:
+Cooperatively copies data between global and local address spaces.</li>
+<li><code>async_work_group_strided_copy(local/global T *dst, const global/local T *src, size_t num_elements, size_t stride, event_t event)</code>:
+Cooperatively copies data with a designated non-contiguous memory
+stride.</li>
+<li><code>wait_group_events(int num_events, event_t *event_list)</code>:
+Blocks all work-items in the work-group until the specified asynchronous
+copy operations have completed.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

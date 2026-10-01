@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Why OpenCL Barriers in Conditional Branches Deadlock - opencl</title>
+    <meta name="description" content="Using barrier synchronization inside conditional branches in OpenCL frequently leads to program deadlocks due to work-item divergence within a work-group. An OpenCL barrier requires that every work-item in a given work-group execute the barrier instructi">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/why-open-cl-barriers-in-conditional-branches-deadlock">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Why OpenCL Barriers in Conditional Branches Deadlock - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/why-open-cl-barriers-in-conditional-branches-deadlock" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Using barrier synchronization inside conditional branches in OpenCL frequently leads to program deadlocks due to work-item divergence within a work-group. An OpenCL barrier requires that every work-item in a given work-group execute the barrier instructi" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="why-opencl-barriers-in-conditional-branches-deadlock">Why OpenCL
+Barriers in Conditional Branches Deadlock</h1>
+<p>Using barrier synchronization inside conditional branches in OpenCL
+frequently leads to program deadlocks due to work-item divergence within
+a work-group. An OpenCL barrier requires that every work-item in a given
+work-group execute the barrier instruction before any can proceed. When
+a barrier is nested inside a conditional statement where different
+work-items take different execution paths, work-items that encounter the
+barrier wait indefinitely for their peers who skipped it, completely
+halting execution.</p>
+<h3 id="the-mechanism-of-opencl-barriers">The Mechanism of OpenCL
+Barriers</h3>
+<p>In OpenCL, work-items are executed concurrently in units called
+work-groups. To synchronize memory operations and execution flow among
+work-items sharing local memory, developers use the
+<code>barrier()</code> function (such as
+<code>barrier(CLK_LOCAL_MEM_FENCE)</code> or
+<code>barrier(CLK_GLOBAL_MEM_FENCE)</code>). By design, a barrier halts
+every work-item inside the work-group at that exact instruction until
+the entire group arrives at the same point. Only when the full
+work-group has checked in does the hardware allow any work-item to
+resume execution.</p>
+<h3 id="work-item-divergence-and-deadlocks">Work-Item Divergence and
+Deadlocks</h3>
+<p>Deadlocks occur when a barrier is wrapped in control flow—such as an
+<code>if-else</code> construct, <code>switch</code> statement, or
+loop—that evaluates differently across work-items of the same
+work-group. This divergence creates an unresolvable state:</p>
+<ol type="1">
+<li><strong>Path Divergence:</strong> Work-item A evaluates the
+condition as <code>true</code> and enters the conditional block where
+the barrier resides. Work-item B evaluates the condition as
+<code>false</code> and skips the block entirely.</li>
+<li><strong>Indefinite Waiting:</strong> Work-item A arrives at the
+barrier and suspends execution, waiting for all other work-items in its
+work-group, including Work-item B, to hit the barrier.</li>
+<li><strong>Hardware Stall:</strong> Work-item B moves forward past the
+conditional statement without ever executing the barrier instruction.
+Work-item A can never be released, resulting in an infinite stall,
+driver timeout, or GPU crash.</li>
+</ol>
+<h3 id="the-opencl-specification-rule">The OpenCL Specification
+Rule</h3>
+<p>The OpenCL specification explicitly states that if a barrier is
+inside a conditional statement, that conditional statement must evaluate
+identically for all work-items in the work-group.</p>
+<p>If any work-item enters the branch containing the barrier, all
+work-items in that work-group must enter it. Conversely, if any
+work-item skips it, all must skip it. If a barrier is inside a loop, all
+work-items must iterate through the loop the exact same number of times
+and encounter the barrier in the exact same sequence. Violating this
+rule yields undefined behavior, which on GPU architectures directly
+manifests as a hardware deadlock or silent kernel failure.</p>
+<h3 id="how-to-avoid-barrier-deadlocks">How to Avoid Barrier
+Deadlocks</h3>
+<p>To write safe synchronization logic in OpenCL:</p>
+<ul>
+<li><strong>Move Barriers to Convergent Paths:</strong> Restructure the
+kernel so the barrier sits outside the divergent <code>if-else</code>
+blocks. Perform conditional data computation first, write results, and
+synchronize afterward in uniform code.</li>
+<li><strong>Use Work-Group Invariant Conditions:</strong> If a
+conditional branch must contain a barrier, ensure the condition relies
+strictly on variables that are identical for every work-item in the
+group (e.g., using <code>get_group_id()</code> or uniform kernel
+arguments, but never <code>get_local_id()</code> or per-item data).</li>
+<li><strong>Align Loop Iterations:</strong> If synchronization occurs
+inside a loop, make certain the termination condition is constant across
+the entire work-group so no work-item exits the loop early.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

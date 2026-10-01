@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How HLS Converts OpenCL Kernels to FPGA Pipelines - opencl</title>
+    <meta name="description" content="High-Level Synthesis (HLS) bridges the gap between high-level parallel software and custom hardware by transforming OpenCL kernels into cycle-accurate, deeply pipelined Register-Transfer Level (RTL) architectures for Field Programmable Gate Arrays (FPGAs">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-hls-converts-open-cl-kernels-to-fpga-pipelines">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How HLS Converts OpenCL Kernels to FPGA Pipelines - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-hls-converts-open-cl-kernels-to-fpga-pipelines" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="High-Level Synthesis (HLS) bridges the gap between high-level parallel software and custom hardware by transforming OpenCL kernels into cycle-accurate, deeply pipelined Register-Transfer Level (RTL) architectures for Field Programmable Gate Arrays (FPGAs" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-hls-converts-opencl-kernels-to-fpga-pipelines">How HLS
+Converts OpenCL Kernels to FPGA Pipelines</h1>
+<p>High-Level Synthesis (HLS) bridges the gap between high-level
+parallel software and custom hardware by transforming OpenCL kernels
+into cycle-accurate, deeply pipelined Register-Transfer Level (RTL)
+architectures for Field Programmable Gate Arrays (FPGAs). This article
+details the synthesis pipeline, examining how OpenCL code is parsed into
+data-flow representations, scheduled across discrete clock cycles, bound
+to physical FPGA resources, and architected into continuous streaming
+pipelines to achieve hardware-level throughput.</p>
+<h3 id="1-parsing-and-control-data-flow-graph-cdfg-generation">1.
+Parsing and Control-Data Flow Graph (CDFG) Generation</h3>
+<p>The HLS compilation process begins by parsing the OpenCL C source
+code into an intermediate representation (IR), commonly utilizing an
+LLVM-based compiler infrastructure. The front-end analyzes the kernel's
+functional syntax, variable scopes, and loop bounds, stripping away
+software-specific constructs and producing a Control-Data Flow Graph
+(CDFG).</p>
+<p>In a CDFG, operations such as additions, memory accesses, and bit
+shifts become operational nodes, while the edges represent data
+dependencies or control transfer paths. OpenCL execution hierarchy
+attributes—such as <code>work-item</code> threads,
+<code>work-group</code> allocations, and OpenCL memory address spaces
+(<code>__global</code>, <code>__local</code>, and
+<code>__private</code>)—are identified and tagged for dedicated hardware
+mapping.</p>
+<h3 id="2-scheduling-operations-across-clock-cycles">2. Scheduling
+Operations Across Clock Cycles</h3>
+<p>Once the data dependencies are defined, the HLS scheduler assigns
+each node in the CDFG to a specific clock cycle, adhering strictly to
+the target FPGA clock frequency constraint.</p>
+<ul>
+<li><strong>Timing Analysis:</strong> The compiler calculates
+propagation delays through physical logic gates using pre-characterized
+technology libraries for the target FPGA.</li>
+<li><strong>Chaining:</strong> Fast operations (such as bitwise
+operations or simple additions) with combined delays less than the
+target clock period are chained within the same clock cycle.</li>
+<li><strong>Multi-Cycle Splitting:</strong> Complex operations (such as
+floating-point division or external memory transactions) that exceed the
+clock period are broken up across multiple sequential clock cycles.</li>
+</ul>
+<p>The primary objective during scheduling is minimizing the critical
+path delay while optimizing the Initiation Interval (II)—the number of
+clock cycles between starting consecutive loop iterations or
+work-items.</p>
+<h3 id="3-resource-allocation-and-binding">3. Resource Allocation and
+Binding</h3>
+<p>Binding maps the scheduled algorithmic operations directly to
+discrete physical resources available on the FPGA fabric:</p>
+<ul>
+<li><strong>Arithmetic Logic:</strong> Mathematical and floating-point
+computations are mapped to dedicated Digital Signal Processing (DSP)
+slices or Look-Up Tables (LUTs).</li>
+<li><strong>Storage Allocation:</strong> OpenCL <code>__private</code>
+variables are bound to registers (Flip-Flops). Small arrays or
+<code>__local</code> scratchpad memory buffers are implemented using
+embedded Block RAMs (BRAM) or UltraRAMs (URAM).</li>
+<li><strong>Hardware Sharing:</strong> To conserve area, HLS can
+schedule non-overlapping operations on the same physical functional unit
+(e.g., sharing a single multiplier across multiple time steps via
+multiplexers), balancing resource utilization against performance
+targets.</li>
+</ul>
+<h3 id="4-constructing-the-hardware-pipeline">4. Constructing the
+Hardware Pipeline</h3>
+<p>The core mechanism for maximizing throughput is hardware pipelining,
+primarily applied to loops and the OpenCL work-item execution
+stream.</p>
+<p>Instead of processing an entire work-item or loop iteration to
+completion before accepting the next, the HLS tool structures the
+datapath as a series of connected pipeline stages separated by register
+slices. Each stage processes a different iteration concurrently.</p>
+<ul>
+<li><strong>Initiation Interval (II = 1):</strong> The ideal pipeline
+accepts a new work-item or data token every single clock cycle.</li>
+<li><strong>Pipeline Hazards:</strong> If a read-after-write (RAW)
+dependency exists across iterations, or if a structural hazard occurs
+(e.g., dual access to a single-port BRAM), the HLS tool inserts pipeline
+stalls, increasing the II. Techniques such as array partitioning, memory
+banking, and loop unrolling are utilized during this phase to eliminate
+bottleneck dependencies.</li>
+</ul>
+<h3 id="5-memory-interface-generation">5. Memory Interface
+Generation</h3>
+<p>OpenCL utilizes a hierarchical memory model that must be translated
+into explicit physical interconnects:</p>
+<ul>
+<li><strong>Global Memory Interfaces:</strong> Pointers marked with
+<code>__global</code> are synthesized into standard bus master
+controllers, typically AXI4 interfaces. The compiler generates memory
+burst controllers to maximize memory bandwidth utilization against
+external DDR or HBM memory.</li>
+<li><strong>Local Memory Synthesis:</strong> Data marked with
+<code>__local</code> is synthesized into high-bandwidth on-chip memory
+arrays, generating custom address decoding logic and multi-bank
+architectures to support parallel read/write accesses without bank
+conflicts.</li>
+<li><strong>Private Registers:</strong> Scalar variables inside the
+kernel become dedicated wiring buses and registers directly routed to
+operational inputs.</li>
+</ul>
+<h3 id="6-control-logic-and-rtl-generation">6. Control Logic and RTL
+Generation</h3>
+<p>Finally, HLS generates the orchestrating control plane. A dedicated
+Finite State Machine (FSM) is created to handle kernel initialization,
+work-group dispatch, loop iteration counters, and pipeline valid/stall
+signaling.</p>
+<p>The scheduler outputs synthesis-ready Verilog or VHDL representing
+the interconnected datapath, control FSMs, and standardized peripheral
+interfaces (such as AXI4-Lite for host-managed register control). The
+resulting RTL is fully integrated into the downstream vendor
+implementation tools for final placement and routing onto the FPGA
+chip.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

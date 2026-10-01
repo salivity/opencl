@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Work-Group Scheduling: CPU vs GPU - opencl</title>
+    <meta name="description" content="This article explores the fundamental differences in how OpenCL work-groups are scheduled and executed across CPU thread pools and GPU wave schedulers. While both architectures execute the same high-level OpenCL data-parallel programming model, their und">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-work-group-scheduling-cpu-vs-gpu">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Work-Group Scheduling: CPU vs GPU - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-work-group-scheduling-cpu-vs-gpu" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article explores the fundamental differences in how OpenCL work-groups are scheduled and executed across CPU thread pools and GPU wave schedulers. While both architectures execute the same high-level OpenCL data-parallel programming model, their und" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-work-group-scheduling-cpu-vs-gpu">OpenCL Work-Group
+Scheduling: CPU vs GPU</h1>
+<p>This article explores the fundamental differences in how OpenCL
+work-groups are scheduled and executed across CPU thread pools and GPU
+wave schedulers. While both architectures execute the same high-level
+OpenCL data-parallel programming model, their underlying mechanisms
+diverge significantly: CPUs rely on software-managed thread pools
+designed for coarse-grained task execution, while GPUs leverage
+dedicated hardware schedulers optimized for fine-grained, lockstep data
+parallelism and rapid latency hiding.</p>
+<h3 id="the-opencl-execution-hierarchy">The OpenCL Execution
+Hierarchy</h3>
+<p>In OpenCL, computations are structured as an N-dimensional grid of
+work-items (threads) organized into work-groups. Work-items within the
+same work-group can share local memory and synchronize using barriers.
+How an OpenCL implementation maps these work-groups to physical hardware
+dictates the performance characteristics of the application.</p>
+<h3 id="cpu-scheduling-software-thread-pools">CPU Scheduling: Software
+Thread Pools</h3>
+<p>CPUs are designed for low-latency execution of complex, sequential
+tasks with extensive branch prediction and large cache hierarchies. When
+executing OpenCL kernels, CPU runtimes adapt the OpenCL model to fit a
+traditional multicore operating system environment.</p>
+<ul>
+<li><strong>Software-Managed Allocation:</strong> OpenCL CPU runtimes
+typically create a pool of OS-level worker threads (often using
+libraries like Intel oneTBB, POSIX threads, or OpenMP) matching the
+number of physical or logical cores.</li>
+<li><strong>Coarse-Grained Mapping:</strong> Because spawning thousands
+of OS threads creates unsustainable context-switching overhead, a CPU
+worker thread typically takes ownership of an entire work-group, or even
+a batch of work-groups.</li>
+<li><strong>Serialization and Vectorization:</strong> The CPU thread
+iterates through the work-items within its assigned work-group
+sequentially using nested loops. Where possible, the runtime compiler
+vectorizes these inner loops to utilize SIMD instruction sets (such as
+AVX-512 or NEON).</li>
+<li><strong>Barrier Synchronization:</strong> Barriers
+(<code>barrier(CLK_LOCAL_MEM_FENCE)</code>) inside a CPU work-group are
+handled via software loops or lightweight fiber/coroutine-style
+switches, ensuring that all work-items in the current group reach the
+barrier point before the thread resumes the loop for subsequent
+instructions.</li>
+<li><strong>Latency Management:</strong> CPUs manage memory latency
+using hardware caches, out-of-order execution, and deep prefetching
+rather than rapid thread switching.</li>
+</ul>
+<h3 id="gpu-scheduling-hardware-wave-schedulers">GPU Scheduling:
+Hardware Wave Schedulers</h3>
+<p>GPUs are massively parallel throughput engines designed to process
+tens of thousands of active threads simultaneously. Work-group
+scheduling on a GPU is handled almost entirely at the silicon level by
+specialized hardware dispatch units.</p>
+<ul>
+<li><strong>Decomposition into Waves/Warps:</strong> When a work-group
+is dispatched to a GPU Compute Unit (AMD) or Streaming Multiprocessor
+(NVIDIA), the hardware automatically splits the work-group into
+fixed-size units known as wavefronts (AMD, typically 32 or 64
+work-items) or warps (NVIDIA, 32 work-items).</li>
+<li><strong>Hardware Schedulers:</strong> Dedicated hardware units
+monitor dozens of active waves resident on the compute unit. A wave
+scheduler tracks instruction readiness for each wave in cycle-by-cycle
+pipelines.</li>
+<li><strong>Zero-Overhead Context Switching:</strong> All active
+work-groups on a GPU unit have their architectural state (registers and
+local memory allocation) simultaneously held in hardware. If one wave
+stalls due to a global memory fetch, the hardware scheduler instantly
+switches to another wave that is ready to execute an instruction on the
+next clock cycle without software intervention.</li>
+<li><strong>SIMT Execution:</strong> Work-items within a wave execute in
+lockstep under a Single Instruction, Multiple Threads (SIMT) model.
+Divergent control flow (such as <code>if-else</code> branches) causes
+the hardware to mask out non-executing lanes, executing both paths
+sequentially across the wave.</li>
+<li><strong>Hardware Barriers:</strong> Work-group barriers are resolved
+via dedicated hardware barrier registers and counters. When all
+constituent waves of a work-group trigger the barrier, the hardware
+instantly marks the work-group ready to continue.</li>
+</ul>
+<h3 id="key-architectural-differences">Key Architectural
+Differences</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Feature</th>
+<th style="text-align: left;">CPU Thread Pools</th>
+<th style="text-align: left;">GPU Wave Schedulers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Scheduler Layer</strong></td>
+<td style="text-align: left;">Software runtime / OS threads</td>
+<td style="text-align: left;">Dedicated hardware units</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Work-Group Handling</strong></td>
+<td style="text-align: left;">One CPU thread loops through
+work-items</td>
+<td style="text-align: left;">Dispatched directly to compute units</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Execution Subunit</strong></td>
+<td style="text-align: left;">Serial loops / SIMD vector registers</td>
+<td style="text-align: left;">Hardware waves / warps (32–64 items)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Context Switch Cost</strong></td>
+<td style="text-align: left;">High (handled via OS or runtime
+stack)</td>
+<td style="text-align: left;">Zero to near-zero cycles in hardware</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Latency Strategy</strong></td>
+<td style="text-align: left;">Caching, prefetching, out-of-order
+execution</td>
+<td style="text-align: left;">Massive parallelism, cycle-by-cycle wave
+interleaving</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Barrier Handling</strong></td>
+<td style="text-align: left;">Software loop splitting or
+context-swapping</td>
+<td style="text-align: left;">Fast hardware signaling</td>
+</tr>
+</tbody>
+</table>
+<h3 id="practical-implications">Practical Implications</h3>
+<p>These scheduling differences dictate how OpenCL kernels should be
+tuned for each target. On CPUs, optimal performance comes from
+maintaining high instruction cache locality, avoiding complex branch
+divergence, and relying on compiler auto-vectorization across
+work-items. On GPUs, performance relies on saturating the hardware
+scheduler by keeping occupancy high, ensuring memory accesses are
+coalesced across the wavefront, and allocating local memory and
+registers conservatively so multiple work-groups can reside concurrently
+on each compute unit.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How POCL Implements OpenCL Across CPUs and GPUs - opencl</title>
+    <meta name="description" content="The Portable Computing Language (POCL) is an open-source implementation of the OpenCL standard that allows parallel computing programs to execute seamlessly across diverse hardware architectures. By decoupling OpenCL from vendor-specific proprietary driv">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/how-pocl-implements-open-cl-across-cp-us-and-gp-us">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How POCL Implements OpenCL Across CPUs and GPUs - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/how-pocl-implements-open-cl-across-cp-us-and-gp-us" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="The Portable Computing Language (POCL) is an open-source implementation of the OpenCL standard that allows parallel computing programs to execute seamlessly across diverse hardware architectures. By decoupling OpenCL from vendor-specific proprietary driv" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="how-pocl-implements-opencl-across-cpus-and-gpus">How POCL
+Implements OpenCL Across CPUs and GPUs</h1>
+<p>The Portable Computing Language (POCL) is an open-source
+implementation of the OpenCL standard that allows parallel computing
+programs to execute seamlessly across diverse hardware architectures. By
+decoupling OpenCL from vendor-specific proprietary drivers, POCL enables
+developers to target multi-core CPUs, GPUs, DSPs, and custom hardware
+accelerators using a single runtime and compiler infrastructure. This
+article explains how POCL leverages the LLVM compiler framework, dynamic
+work-group transformations, and modular device drivers to deliver an
+open-source OpenCL implementation across modern CPUs and GPUs.</p>
+<h3 id="the-llvm-based-compilation-pipeline">The LLVM-Based Compilation
+Pipeline</h3>
+<p>At the core of POCL's architecture is its deep integration with the
+LLVM compiler infrastructure and Clang. When an OpenCL C kernel is
+submitted for compilation, POCL processes the source through Clang to
+generate LLVM Intermediate Representation (IR).</p>
+<p>Operating at the IR level allows POCL to perform hardware-agnostic
+optimizations, such as constant propagation and inlining, before handing
+the code off to device-specific targets. LLVM’s modular backend design
+allows POCL to translate OpenCL C into the native machine code of any
+target supported by LLVM, including x86-64, ARM, RISC-V, and specific
+GPU instruction sets.</p>
+<h3
+id="cpu-implementation-work-item-vectorization-and-multithreading">CPU
+Implementation: Work-Item Vectorization and Multithreading</h3>
+<p>The OpenCL execution model defines fine-grained parallel units called
+work-items, which are grouped into work-groups. Because standard CPU
+architectures feature wide SIMD (Single Instruction, Multiple Data)
+execution units rather than millions of lightweight hardware threads
+like GPUs, directly mapping individual work-items to CPU threads results
+in massive scheduling overhead.</p>
+<p>POCL solves this through a process known as work-group
+generation:</p>
+<ol type="1">
+<li><strong>Kernel Transformation:</strong> POCL transforms the kernel
+function by wrapping the work-item execution in loops that iterate
+through the local dimensions of a work-group.</li>
+<li><strong>Loop Vectorization:</strong> Through LLVM's
+auto-vectorization passes, POCL vectorizes these loops across SIMD lanes
+(such as AVX-512, AVX2, or ARM NEON), executing multiple work-items in
+parallel per CPU core.</li>
+<li><strong>Thread Pool Execution:</strong> The entire work-group is
+mapped to standard OS threads (typically via POSIX threads). POCL
+maintains a lightweight thread pool where each CPU core pulls and
+processes entire work-groups independently, minimizing context switching
+and ensuring high CPU cache locality.</li>
+</ol>
+<h3
+id="gpu-implementation-modular-device-drivers-and-target-backends">GPU
+Implementation: Modular Device Drivers and Target Backends</h3>
+<p>For GPU execution, POCL utilizes a modular device layer that
+abstracts physical hardware interfaces into standard driver hooks for
+device discovery, memory allocation, and command execution.</p>
+<p>Rather than managing hardware-level GPU registers directly, POCL
+integrates with existing low-level GPU compilation pathways:</p>
+<ul>
+<li><strong>NVIDIA GPUs (CUDA Backend):</strong> POCL maps OpenCL API
+calls to the CUDA Driver API. The LLVM NVPTX target compiles the OpenCL
+C kernel IR into PTX (Parallel Thread Execution) code, which the
+proprietary or open-source CUDA driver then assembles and launches on
+NVIDIA hardware.</li>
+<li><strong>Open-Source GPU Backends (SPIR-V, Vulkan, and Level
+Zero):</strong> For Intel and AMD GPUs, POCL can generate standard
+SPIR-V intermediate binaries. These are dispatched through modern
+vendor-neutral low-level APIs such as Vulkan (via compute shaders) or
+Intel Level Zero, enabling compute execution without requiring full
+proprietary OpenCL driver stacks.</li>
+</ul>
+<h3 id="runtime-memory-management-and-kernel-dispatch">Runtime Memory
+Management and Kernel Dispatch</h3>
+<p>POCL provides a fully compliant OpenCL host runtime library
+(<code>libOpenCL.so</code>). This runtime manages the lifecycle of
+OpenCL contexts, command queues, memory buffers, and synchronization
+primitives (events).</p>
+<p>When host memory must be shared with a compute device, POCL
+determines whether the memory can be shared directly (zero-copy on
+unified memory architectures such as CPUs or integrated GPUs) or
+requires explicit DMA transfers over PCIe (discrete GPUs). POCL also
+implements an on-disk compilation cache, storing compiled device
+binaries to eliminate the latency of repeated Just-In-Time (JIT)
+compilation cycles across application runs.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL P2P Latency: NVLink and Infinity Fabric - opencl</title>
+    <meta name="description" content="This article examines how proprietary high-speed interconnects—specifically NVIDIA NVLink and AMD Infinity Fabric (xGMI)—reduce data transfer latency in multi-GPU OpenCL environments. By bypassing traditional PCIe root complex bottlenecks and host-me">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-p-2-p-latency-nv-link-and-infinity-fabric">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL P2P Latency: NVLink and Infinity Fabric - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-p-2-p-latency-nv-link-and-infinity-fabric" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="This article examines how proprietary high-speed interconnects—specifically NVIDIA NVLink and AMD Infinity Fabric (xGMI)—reduce data transfer latency in multi-GPU OpenCL environments. By bypassing traditional PCIe root complex bottlenecks and host-me" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-p2p-latency-nvlink-and-infinity-fabric">OpenCL P2P
+Latency: NVLink and Infinity Fabric</h1>
+<p>This article examines how proprietary high-speed
+interconnects—specifically NVIDIA NVLink and AMD Infinity Fabric
+(xGMI)—reduce data transfer latency in multi-GPU OpenCL environments. By
+bypassing traditional PCIe root complex bottlenecks and host-memory
+staging, peer-to-peer (P2P) architectures provide direct GPU-to-GPU
+memory transactions. Below, we break down the operational mechanics,
+quantified latency reductions, and practical performance impacts on
+OpenCL workloads.</p>
+<h3 id="the-pcie-staging-bottleneck-vs-direct-p2p">The PCIe Staging
+Bottleneck vs. Direct P2P</h3>
+<p>In standard multi-GPU OpenCL configurations lacking direct P2P
+interconnects, moving data between two devices typically requires
+double-buffering through system RAM. A device must push data to host
+memory via the PCIe bus (<code>clEnqueueReadBuffer</code>), synchronize,
+and then pull it to the target device
+(<code>clEnqueueWriteBuffer</code>). Even with PCIe P2P, transfers are
+bound by the PCIe protocol overhead, tree routing, and the host CPU's
+PCIe root complex.</p>
+<p>This routing induces latency ranging between 8 to 20 microseconds per
+transfer, heavily influenced by host CPU interrupts, bus contention, and
+memory serialization.</p>
+<p>Direct P2P architectures eliminate the host system entirely from the
+critical data path. Physical links—NVLink on NVIDIA platforms or
+Infinity Fabric/xGMI on AMD systems—connect GPUs via a crossbar or
+direct point-to-point mesh. When an OpenCL application triggers an
+inter-GPU memory copy or accesses peer device memory using Shared
+Virtual Memory (SVM) or platform-specific P2P buffer extensions, the
+transaction occurs as a pure hardware-level remote Direct Memory Access
+(DMA) or unified memory operation.</p>
+<h3 id="quantified-latency-improvements">Quantified Latency
+Improvements</h3>
+<p>Bypassing the PCIe controller and operating system runtime layers
+produces measurable reductions in latency:</p>
+<ul>
+<li><strong>Transfer Latency Drop:</strong> Standard host-staged PCIe
+transfers exhibit an initial transaction latency of approximately 10 to
+15 µs. Direct P2P over NVLink or Infinity Fabric drops this access
+latency down to roughly 1 to 2 µs—representing an approximate 80% to 90%
+reduction in communication delay for small payloads.</li>
+<li><strong>Synchronization Overhead:</strong> In iterative OpenCL
+algorithms (such as boundary updates in PDE solvers), synchronization
+barriers often dominate runtimes. P2P links allow device-side signaling
+and atomic operations directly in remote GPU global memory, bypassing
+OS-level context switches and reducing synchronization overhead from
+milliseconds across iterations to single-digit microseconds.</li>
+<li><strong>Protocol Serialization:</strong> Direct fabric connections
+feature much wider physical interfaces and lighter transport protocols
+than PCIe, allowing memory transactions to commence in nanoseconds once
+scheduled by the command queue.</li>
+</ul>
+<h3 id="latency-profiles-nvlink-vs-infinity-fabric">Latency Profiles:
+NVLink vs. Infinity Fabric</h3>
+<p>Both architectures achieve comparable latency ranges but differ in
+their underlying implementation:</p>
+<ul>
+<li><strong>NVIDIA NVLink:</strong> NVLink leverages a specialized
+high-speed serial interface. Within OpenCL (or OpenCL running atop
+NVIDIA drivers exposing peer-access memory extensions), peer memory
+pointers map directly to the remote GPU's physical addresses. Transfers
+avoid the OS kernel, enabling sub-2-microsecond latency for
+single-packet transfers, while aggregate bidirectional bandwidth can
+exceed 900 GB/s on modern architectures like Hopper.</li>
+<li><strong>AMD Infinity Fabric (xGMI):</strong> AMD’s implementation
+integrates deeply with the ROCm OpenCL runtime. Infinity Fabric acts as
+a coherent bus, meaning GPU compute units can issue direct loads and
+stores to remote GPU memory spaces without explicitly issuing DMA
+commands. This cache-coherent fabric maintains flat latency curves
+(around 1.5 to 2.5 µs) even across multi-hop topologies, making it ideal
+for OpenCL SVM fine-grained buffer operations.</li>
+</ul>
+<h3 id="practical-impact-on-opencl-workloads">Practical Impact on OpenCL
+Workloads</h3>
+<p>The reduction in latency dramatically changes how OpenCL pipelines
+scale across multiple devices:</p>
+<ol type="1">
+<li><strong>Smaller Viable Payload Sizes:</strong> High PCIe latency
+traditionally required batching data into large blocks (often tens of
+megabytes) to amortize the setup cost. Low P2P latency makes continuous,
+small payload transfers (tens of kilobytes) computationally
+efficient.</li>
+<li><strong>Accelerated Stencil and Halo Exchanges:</strong> Scientific
+simulations running iterative domain decomposition can exchange halo
+cells via peer pointers instantly, cutting inter-kernel idle states and
+preventing GPU stall cycles.</li>
+<li><strong>Pipelined Kernel Execution:</strong> GPUs can overlap
+execution and peer-transfers efficiently, as the CPU is completely
+offloaded from managing buffer transfers, reducing CPU-GPU
+synchronization bottlenecks.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ Features Excluded in C++ for OpenCL - opencl</title>
+    <meta name="description" content="C++ for OpenCL bridges standard C++17 with OpenCL kernel programming to bring modern object-oriented and generic programming capabilities to heterogeneous computing. However, to maintain high performance, deterministic execution, and compatibility with t">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/c-features-excluded-in-c-for-open-cl">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="C++ Features Excluded in C++ for OpenCL - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/c-features-excluded-in-c-for-open-cl" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="C++ for OpenCL bridges standard C++17 with OpenCL kernel programming to bring modern object-oriented and generic programming capabilities to heterogeneous computing. However, to maintain high performance, deterministic execution, and compatibility with t" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="c-features-excluded-in-c-for-opencl">C++ Features Excluded in
+C++ for OpenCL</h1>
+<p>C++ for OpenCL bridges standard C++17 with OpenCL kernel programming
+to bring modern object-oriented and generic programming capabilities to
+heterogeneous computing. However, to maintain high performance,
+deterministic execution, and compatibility with the massively parallel,
+constrained memory architectures of GPUs and accelerators, several
+standard C++ features are intentionally excluded. This article details
+the primary standard C++ language constructs that are omitted from the
+C++ for OpenCL specification.</p>
+<h3 id="dynamic-memory-management">Dynamic Memory Management</h3>
+<p>Standard operators <code>new</code> and <code>delete</code>, along
+with any dynamic heap allocation mechanisms, are not supported in C++
+for OpenCL. Heterogeneous compute devices typically lack an
+operating-system-level runtime to manage a global heap per work-item.
+Allowing dynamic allocations within kernel code would introduce memory
+fragmentation, non-deterministic latency, and heavy lock contention
+across thousands of concurrent hardware threads. Memory must instead be
+allocated statically or passed into kernels via explicit address
+spaces.</p>
+<h3 id="exception-handling">Exception Handling</h3>
+<p>C++ exception handling—including the <code>try</code>,
+<code>catch</code>, and <code>throw</code> keywords—is completely
+removed. The hardware execution model of devices like GPUs relies
+heavily on lockstep execution (SIMD or SIMT). Managing call-stack
+unwinding, preserving frame metadata, and jumping execution paths on a
+per-thread basis introduces massive control-flow divergence and
+unacceptable silicon overhead. Errors in OpenCL must instead be tracked
+and handled through return codes or explicit status flags.</p>
+<h3 id="virtual-functions-and-runtime-type-information-rtti">Virtual
+Functions and Runtime Type Information (RTTI)</h3>
+<p>Polymorphism via virtual functions, virtual base classes, and dynamic
+runtime dispatch (<code>vtable</code> lookups) is excluded. Virtual
+dispatch inhibits function inlining, prevents aggressive compiler
+optimizations, and introduces indirect memory lookups that can cause
+branch divergence and memory cache thrashing. Consequently, Runtime Type
+Information (RTTI) mechanisms like <code>dynamic_cast</code> and
+<code>typeid</code> are also omitted, eliminating the need to store and
+query class hierarchy metadata at runtime.</p>
+<h3 id="function-recursion">Function Recursion</h3>
+<p>Standard C++ allows functions to call themselves directly or
+indirectly, but recursion is fundamentally restricted or prohibited in
+C++ for OpenCL. Kernel execution pipelines operate on limited,
+fixed-size private stacks per work-item. Without a dynamically
+expandable stack provided by an operating system, unbounded or deeply
+nested recursion risks stack overflow and memory corruption. Compilers
+require call graphs to be fully resolvable at compile-time to precisely
+allocate register files and stack frames.</p>
+<h3 id="standard-c-library-stl-and-system-io">Standard C++ Library (STL)
+and System I/O</h3>
+<p>The standard C++ library—including dynamic containers
+(<code>std::vector</code>, <code>std::string</code>), thread-management
+utilities (<code>std::thread</code>, <code>std::mutex</code>), and
+stream-based input/output (<code>std::cin</code>,
+<code>std::cout</code>)—is not available. These libraries fundamentally
+depend on host operating system services, dynamic allocation, and
+exceptions. Instead, developers must rely on specialized OpenCL built-in
+math, geometric, and synchronization functions tailored for
+vectorization and accelerator memory hierarchies.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

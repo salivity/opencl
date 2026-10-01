@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>memory_scope_device vs memory_scope_all_svm_devices - opencl</title>
+    <meta name="description" content="In OpenCL 2.0 and later, memory scopes define the boundary within which atomic operations and memory orderings apply. The difference between memoryscopedevice and memoryscopeallsvmdevices centers on the visibility boundary of these operations: memoryscop">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/memory-scope-device-vs-memory-scope-all-svm-devices">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="memory_scope_device vs memory_scope_all_svm_devices - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/memory-scope-device-vs-memory-scope-all-svm-devices" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="In OpenCL 2.0 and later, memory scopes define the boundary within which atomic operations and memory orderings apply. The difference between memoryscopedevice and memoryscopeallsvmdevices centers on the visibility boundary of these operations: memoryscop" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1
+id="memory_scope_device-vs-memory_scope_all_svm_devices">memory_scope_device
+vs memory_scope_all_svm_devices</h1>
+<p>In OpenCL 2.0 and later, memory scopes define the boundary within
+which atomic operations and memory orderings apply. The difference
+between <code>memory_scope_device</code> and
+<code>memory_scope_all_svm_devices</code> centers on the visibility
+boundary of these operations: <code>memory_scope_device</code> restricts
+memory synchronization strictly to work-items running on the same
+individual OpenCL device, while
+<code>memory_scope_all_svm_devices</code> extends synchronization across
+all OpenCL devices sharing a virtual memory space, including the host
+CPU.</p>
+<h3 id="understanding-memory_scope_device">Understanding
+<code>memory_scope_device</code></h3>
+<p>When an atomic operation or memory fence uses
+<code>memory_scope_device</code>, the synchronization guarantees are
+confined to a single OpenCL device.</p>
+<ul>
+<li><strong>Visibility:</strong> All work-items across all work-groups
+executing on that specific device can see the changes according to the
+specified memory ordering (e.g., <code>memory_order_seq_cst</code>,
+<code>memory_order_acq_rel</code>).</li>
+<li><strong>Hardware Boundary:</strong> It typically targets
+device-level hardware primitives, such as GPU L2 caches or on-chip
+coherence fabrics.</li>
+<li><strong>Exclusions:</strong> The host processor and any secondary
+devices connected to the same OpenCL context will not be synchronized by
+this operation.</li>
+<li><strong>Performance:</strong> Because it does not require bus
+transactions or cache-coherency protocols across PCI Express (or other
+system interconnects), <code>memory_scope_device</code> has lower
+latency and higher throughput compared to broader scopes.</li>
+</ul>
+<h3 id="understanding-memory_scope_all_svm_devices">Understanding
+<code>memory_scope_all_svm_devices</code></h3>
+<p>The <code>memory_scope_all_svm_devices</code> scope is designed for
+heterogeneous computing environments utilizing Shared Virtual Memory
+(SVM), particularly fine-grained system SVM.</p>
+<ul>
+<li><strong>Visibility:</strong> Memory operations synchronized with
+this scope are visible to all work-items on the current device,
+work-items on other SVM-capable devices in the same context, and the
+host CPU threads.</li>
+<li><strong>Hardware Boundary:</strong> This scope transcends individual
+device boundaries, utilizing system-wide cache coherency protocols or
+software-driven flush-and-invalidate cycles across system buses.</li>
+<li><strong>Requirements:</strong> Using this scope requires hardware
+and driver support for fine-grained system or fine-grained buffer SVM
+with atomic capabilities.</li>
+<li><strong>Performance:</strong> Synchronization at this level
+introduces significantly higher latency due to cross-device interconnect
+traffic, system cache invalidation, and broader memory stalls.</li>
+</ul>
+<h3 id="key-differences-summary">Key Differences Summary</h3>
+<ul>
+<li><strong>Scope of Synchronization:</strong>
+<code>memory_scope_device</code> synchronizes only work-items on the
+local device. <code>memory_scope_all_svm_devices</code> synchronizes the
+local device, other discrete/integrated OpenCL devices in the context,
+and the host CPU.</li>
+<li><strong>Use Case:</strong> Use <code>memory_scope_device</code> for
+global communication within a single kernel running on a single
+accelerator (such as multi-work-group reductions). Use
+<code>memory_scope_all_svm_devices</code> when implementing lock-free
+data structures or signaling mechanisms shared concurrently between the
+host and device, or between multiple peer devices.</li>
+<li><strong>Cost:</strong> <code>memory_scope_device</code> is localized
+and fast. <code>memory_scope_all_svm_devices</code> carries heavy
+synchronization overhead across system interconnects.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

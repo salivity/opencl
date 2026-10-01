@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Out-of-Order Dependencies Across Queues - opencl</title>
+    <meta name="description" content="Managing execution dependencies across distinct command queues in OpenCL relies on event objects (clevent) and event wait lists. Even when queues are configured with CLQUEUEOUTOFORDEREXECMODEENABLE, OpenCL allows developers to explicitly define a Directe">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-out-of-order-dependencies-across-queues">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Out-of-Order Dependencies Across Queues - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-out-of-order-dependencies-across-queues" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Managing execution dependencies across distinct command queues in OpenCL relies on event objects (clevent) and event wait lists. Even when queues are configured with CLQUEUEOUTOFORDEREXECMODEENABLE, OpenCL allows developers to explicitly define a Directe" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-out-of-order-dependencies-across-queues">OpenCL
+Out-of-Order Dependencies Across Queues</h1>
+<p>Managing execution dependencies across distinct command queues in
+OpenCL relies on event objects (<code>cl_event</code>) and event wait
+lists. Even when queues are configured with
+<code>CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE</code>, OpenCL allows
+developers to explicitly define a Directed Acyclic Graph (DAG) of
+execution. By passing events generated from one queue into the wait
+lists of commands in another queue, the OpenCL runtime coordinates
+cross-queue synchronization at the device driver level without requiring
+host-side synchronization stalls.</p>
+<h3 id="the-role-of-event-objects">The Role of Event Objects</h3>
+<p>In OpenCL, every enqueued command—such as
+<code>clEnqueueNDRangeKernel</code>, <code>clEnqueueReadBuffer</code>,
+or <code>clEnqueueCopyBuffer</code>—accepts an optional pointer to
+return a <code>cl_event</code>. This event acts as a synchronization
+token that transitions through specific execution states:
+<code>CL_QUEUED</code>, <code>CL_SUBMITTED</code>,
+<code>CL_RUNNING</code>, and finally <code>CL_COMPLETE</code>.</p>
+<p>When an operation is enqueued into an out-of-order queue (Queue A),
+it returns an event. That event can immediately be passed to a command
+enqueued into a different queue (Queue B), establishing an explicit
+dependency.</p>
+<h3 id="event-wait-lists">Event Wait Lists</h3>
+<p>Most enqueue functions accept an array of event pointers
+(<code>event_wait_list</code>) and a count
+(<code>num_events_in_wait_list</code>).</p>
+<p>When Queue B receives a command with an event wait list containing an
+event from Queue A:</p>
+<ol type="1">
+<li>The command in Queue B enters the queue immediately.</li>
+<li>The OpenCL runtime ensures the command does not transition to
+<code>CL_RUNNING</code> until the specified event from Queue A reaches
+<code>CL_COMPLETE</code>.</li>
+<li>Other independent commands in Queue B (if Queue B is also
+out-of-order) can execute concurrently or out-of-sequence, provided they
+do not depend on incomplete events.</li>
+</ol>
+<p>This mechanism avoids blocking the host CPU, allowing asynchronous
+scheduling directly handled by the GPU or OpenCL driver.</p>
+<h3 id="synchronization-markers-and-barriers">Synchronization Markers
+and Barriers</h3>
+<p>OpenCL provides synchronization primitives to streamline dependency
+management across multiple queues:</p>
+<ul>
+<li><strong><code>clEnqueueMarkerWithWaitList</code></strong>: Enqueues
+a marker command that waits for a list of events to complete before
+signaling its own event. This is ideal for aggregating multiple
+dependencies across multiple queues into a single <code>cl_event</code>
+token.</li>
+<li><strong><code>clEnqueueBarrierWithWaitList</code></strong>: Enqueues
+a barrier in a target queue. In an out-of-order queue, this barrier
+ensures that all previously enqueued commands within that specific
+queue, as well as any external events provided in the wait list, must
+complete before any subsequent commands in that queue are allowed to
+execute.</li>
+</ul>
+<h3 id="scope-and-limitations">Scope and Limitations</h3>
+<p>For cross-queue dependency tracking using events to work, all
+participating command queues must reside within the same OpenCL context
+(<code>cl_context</code>). The queues may target the same device or
+different devices, provided those devices belong to that shared
+context.</p>
+<p>If queues belong to distinct OpenCL contexts, events cannot be shared
+directly. In such scenarios, cross-queue dependencies must be resolved
+through host-side blocking mechanisms, such as
+<code>clWaitForEvents</code> or <code>clFinish</code>.</p></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

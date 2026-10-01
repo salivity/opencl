@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Struct Padding and Data Corruption Bugs - opencl</title>
+    <meta name="description" content="Data exchange between a host CPU and an OpenCL device relies on shared memory buffers mapped to identical binary representations on both ends. When structures are shared across this boundary, differing data alignment rules, architecture requirements, and">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-struct-padding-and-data-corruption-bugs">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Struct Padding and Data Corruption Bugs - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-struct-padding-and-data-corruption-bugs" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Data exchange between a host CPU and an OpenCL device relies on shared memory buffers mapped to identical binary representations on both ends. When structures are shared across this boundary, differing data alignment rules, architecture requirements, and" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-struct-padding-and-data-corruption-bugs">OpenCL Struct
+Padding and Data Corruption Bugs</h1>
+<p>Data exchange between a host CPU and an OpenCL device relies on
+shared memory buffers mapped to identical binary representations on both
+ends. When structures are shared across this boundary, differing data
+alignment rules, architecture requirements, and compiler conventions
+often introduce hidden padding bytes between struct members. Because
+these mismatches produce no compile-time warnings, the kernel silently
+reads shifted memory offsets, leading to elusive data corruption,
+calculation errors, or system crashes.</p>
+<h3 id="the-mechanics-of-struct-padding">The Mechanics of Struct
+Padding</h3>
+<p>Compilers insert padding bytes between structure fields or at the end
+of a structure to align data members to memory addresses that the target
+hardware architecture can access efficiently. Natural alignment
+typically requires an <span class="math inline">\(n\)</span>-byte
+primitive type (such as a 32-bit integer or 64-bit float) to reside at a
+memory address divisible by <span class="math inline">\(n\)</span>.</p>
+<p>While both the host compiler (such as GCC, Clang, or MSVC) and the
+OpenCL C device compiler enforce natural alignment, they target
+fundamentally different hardware architectures. A host CPU may have
+relaxed alignment requirements, whereas a GPU or specialized accelerator
+enforces strict vector-aligned access patterns to maximize memory
+throughput.</p>
+<h3 id="the-source-of-host-kernel-discrepancies">The Source of
+Host-Kernel Discrepancies</h3>
+<p>The most common source of misalignment across the host-kernel
+boundary stems from vector types and divergent primitive alignments:</p>
+<ol type="1">
+<li><strong>Vector Alignment Rules in OpenCL C:</strong> In OpenCL C,
+built-in vector types require alignment equal to their total size
+rounded up to the nearest power of two. For example, a
+<code>float3</code> consists of 12 bytes of data, but OpenCL C mandates
+that it is aligned to 16 bytes—the same as a <code>float4</code>. If a
+host application defines an equivalent structure using three sequential
+32-bit floats without explicit 16-byte alignment, the host struct will
+be 12 bytes wide, while the OpenCL device expects 16 bytes.</li>
+<li><strong>64-bit Primitives:</strong> On 32-bit host platforms or
+specific x86 configurations, a 64-bit integer (<code>cl_long</code> or
+<code>long long</code>) might only require 4-byte alignment, whereas
+OpenCL C device compilers mandate 8-byte alignment for 64-bit scalar
+types.</li>
+<li><strong>Tail Padding:</strong> Compilers add tail padding at the end
+of a struct so that in an array of structures, subsequent elements begin
+on proper alignment boundaries. If the host and kernel calculate the
+struct's overall alignment differently, the size of the tail padding
+diverges.</li>
+</ol>
+<h3 id="how-data-corruption-manifests">How Data Corruption
+Manifests</h3>
+<p>When a host enqueues a struct buffer using
+<code>clEnqueueWriteBuffer</code>, it writes a raw byte stream into
+device memory according to the host compiler's memory layout. The OpenCL
+kernel then reads that byte stream through its own struct
+definition.</p>
+<p>If the host layout places a field at offset 12 and the OpenCL
+compiler inserts 4 bytes of padding to place that same field at offset
+16:</p>
+<ul>
+<li>The kernel reads the 4 padding bytes as the start of the field,
+interpreting garbage data or partial values.</li>
+<li>Subsequent fields in the struct are offset by an equivalent amount,
+cascading the corruption through every remaining member.</li>
+<li>In an Array of Structures (AoS), a difference in tail padding means
+that every element after index 0 begins at an incorrect memory address.
+Element 1 is shifted by the size difference, Element 2 by twice that
+difference, and so forth, rendering the entire buffer invalid.</li>
+</ul>
+<p>Because the memory buffer itself is valid and within bounds, the
+OpenCL runtime raises no memory access violations
+(<code>CL_INVALID_MEM_OBJECT</code> or segmentation faults). The
+application continues to run, producing incorrect numerical output that
+appears non-deterministic or impossible to trace via standard host-side
+debugging tools.</p>
+<h3 id="best-practices-to-prevent-alignment-corruption">Best Practices
+to Prevent Alignment Corruption</h3>
+<p>To ensure consistent memory layouts across the host-kernel boundary,
+adopt the following strategies:</p>
+<ul>
+<li><strong>Use OpenCL Host Types:</strong> Use the standard header
+types provided in <code>CL/cl_platform.h</code> (such as
+<code>cl_float4</code>, <code>cl_int2</code>) on the host. These types
+include preconfigured alignment attributes that mirror OpenCL C vector
+alignments.</li>
+<li><strong>Explicit Manual Padding:</strong> Manually pad structures
+with dummy fields to satisfy the strictest alignment requirements rather
+than relying on compiler-inserted implicit padding.</li>
+<li><strong>Compiler Attributes:</strong> Enforce identical packing and
+alignment explicitly on both host and device code using
+<code>__attribute__((packed))</code> or
+<code>__attribute__((aligned(n)))</code>. Note that using packed structs
+on GPUs can degrade memory access performance if addresses fail to align
+with hardware cache lines.</li>
+<li><strong>Adopt Structure of Arrays (SoA):</strong> Instead of passing
+complex structs in an Array of Structures (AoS) format, separate struct
+members into independent flat arrays (SoA). Passing individual arrays of
+scalar or vector primitives eliminates internal padding risks and maps
+more naturally to the SIMD execution model of modern GPUs.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

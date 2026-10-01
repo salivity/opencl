@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL 64-Bit vs 32-Bit Integer Indexing Trade-Offs - opencl</title>
+    <meta name="description" content="Choosing between 64-bit and 32-bit integer indexing in OpenCL kernels involves a fundamental trade-off between memory addressing range and compute efficiency. While 64-bit indexing is essential for accessing datasets larger than 4 GB, it introduces signi">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-64-bit-vs-32-bit-integer-indexing-trade-offs">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL 64-Bit vs 32-Bit Integer Indexing Trade-Offs - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-64-bit-vs-32-bit-integer-indexing-trade-offs" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Choosing between 64-bit and 32-bit integer indexing in OpenCL kernels involves a fundamental trade-off between memory addressing range and compute efficiency. While 64-bit indexing is essential for accessing datasets larger than 4 GB, it introduces signi" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-64-bit-vs-32-bit-integer-indexing-trade-offs">OpenCL
+64-Bit vs 32-Bit Integer Indexing Trade-Offs</h1>
+<p>Choosing between 64-bit and 32-bit integer indexing in OpenCL kernels
+involves a fundamental trade-off between memory addressing range and
+compute efficiency. While 64-bit indexing is essential for accessing
+datasets larger than 4 GB, it introduces significant hardware-level
+overheads, including slower arithmetic throughput, increased register
+pressure, and diminished GPU occupancy. Understanding these trade-offs
+allows developers to properly balance dataset scalability against
+execution speed.</p>
+<h3 id="addressing-capacity-the-4-gb-boundary">Addressing Capacity: The
+4 GB Boundary</h3>
+<p>The primary reason to use 64-bit indexing (<code>long</code> or
+native 64-bit <code>size_t</code>) is memory capacity. A standard 32-bit
+unsigned integer can address up to <span
+class="math inline">\(2^{32}\)</span> distinct elements or bytes,
+effectively capping addressable memory at 4 GB.</p>
+<ul>
+<li><strong>32-Bit Indexing:</strong> Restricts element addressing or
+linear byte offsets to 4,294,967,296 entries. If your kernel processes
+arrays or buffers exceeding this size, 32-bit integers will overflow,
+resulting in memory corruption or out-of-bounds access.</li>
+<li><strong>64-Bit Indexing:</strong> Removes memory scaling limits for
+the foreseeable future, enabling applications to address multi-terabyte
+buffers natively.</li>
+</ul>
+<h3 id="alu-arithmetic-throughput">ALU Arithmetic Throughput</h3>
+<p>Most modern GPU architectures are fundamentally optimized for 32-bit
+datatypes (single-precision floats and 32-bit integers).</p>
+<ul>
+<li><strong>Instruction Execution:</strong> GPUs typically lack native
+64-bit integer execution units across all execution pipelines.
+Performing 64-bit arithmetic—such as calculating multidimensional array
+offsets via <code>(y * width) + x</code>—often requires emulating a
+single 64-bit operation with multiple 32-bit instructions.</li>
+<li><strong>Throughput Penalty:</strong> Depending on the target
+hardware (such as AMD or NVIDIA architectures), 64-bit integer
+operations can run at anywhere from 1/2 to 1/32 the speed of native
+32-bit integer instructions.</li>
+</ul>
+<h3 id="register-pressure-and-thread-occupancy">Register Pressure and
+Thread Occupancy</h3>
+<p>Hardware registers are allocated per work-item from a shared register
+file on each compute unit.</p>
+<ul>
+<li><strong>Double Register Footprint:</strong> A 64-bit variable
+requires two 32-bit physical registers. Widely using 64-bit types for
+indices, loop counters, and address arithmetic increases the register
+allocation per work-item.</li>
+<li><strong>Reduced Occupancy:</strong> As the register requirement per
+thread increases, the hardware scheduler can dispatch fewer concurrent
+work-groups to a compute unit. Lower occupancy reduces the GPU's ability
+to hide memory latency behind active compute threads, degrading overall
+execution efficiency.</li>
+</ul>
+<h3 id="memory-overhead-and-cache-efficiency">Memory Overhead and Cache
+Efficiency</h3>
+<p>When indices are stored in local memory (<code>__local</code>),
+constant memory, or read from global memory tables:</p>
+<ul>
+<li><strong>Bandwidth Usage:</strong> 64-bit indices consume twice the
+memory bandwidth of 32-bit indices.</li>
+<li><strong>Cache Capacity:</strong> Storing 64-bit index structures
+cuts the effective capacity of L1/L2 data caches and shared scratchpad
+memory in half, leading to higher cache miss rates.</li>
+</ul>
+<h3 id="default-opencl-behavior-and-optimization-strategies">Default
+OpenCL Behavior and Optimization Strategies</h3>
+<p>By default, the OpenCL built-in functions
+<code>get_global_id()</code>, <code>get_local_id()</code>, and
+<code>get_global_size()</code> return <code>size_t</code>, which
+defaults to 64-bit integers on 64-bit host and device systems. Using
+these values directly in calculations silently promotes neighboring
+variables to 64-bit arithmetic.</p>
+<p>To maximize performance on datasets smaller than 4 GB:</p>
+<ol type="1">
+<li><strong>Explicit Downcasting:</strong> Cast built-in indexing
+functions to 32-bit types immediately:
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>uint id <span class="op">=</span> <span class="op">(</span>uint<span class="op">)</span>get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span></code></pre></div></li>
+<li><strong>Hybrid Indexing for Large Buffers:</strong> If an overall
+buffer exceeds 4 GB, pass base pointers or block offsets as 64-bit
+integers to the kernel, but execute intra-work-group or intra-tile
+indexing using 32-bit arithmetic. This maintains large-memory
+compatibility while retaining fast 32-bit computation for inner
+loops.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

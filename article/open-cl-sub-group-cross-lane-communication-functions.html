@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Sub-Group Cross-Lane Communication Functions - opencl</title>
+    <meta name="description" content="OpenCL sub-groups execute work-items concurrently as hardware-level SIMD lanes, enabling high-performance intra-group data sharing without the overhead of local memory barriers. This article outlines the built-in OpenCL C functions that enable cross-lane">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-sub-group-cross-lane-communication-functions">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Sub-Group Cross-Lane Communication Functions - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-sub-group-cross-lane-communication-functions" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="OpenCL sub-groups execute work-items concurrently as hardware-level SIMD lanes, enabling high-performance intra-group data sharing without the overhead of local memory barriers. This article outlines the built-in OpenCL C functions that enable cross-lane" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-sub-group-cross-lane-communication-functions">OpenCL
+Sub-Group Cross-Lane Communication Functions</h1>
+<p>OpenCL sub-groups execute work-items concurrently as hardware-level
+SIMD lanes, enabling high-performance intra-group data sharing without
+the overhead of local memory barriers. This article outlines the
+built-in OpenCL C functions that enable cross-lane communication within
+a sub-group, including broadcast, shuffle, scan, reduction, and vote
+operations.</p>
+<h3 id="sub-group-broadcast">Sub-Group Broadcast</h3>
+<p>The broadcast function reads a value from a single specific lane
+(work-item) and distributes it to all other lanes within the active
+sub-group.</p>
+<ul>
+<li><strong><code>sub_group_broadcast(T x, uint sub_group_local_id)</code></strong><br />
+Returns the value of <code>x</code> evaluated by the work-item whose
+sub-group local ID matches <code>sub_group_local_id</code>. The target
+ID must be uniform across the calling work-items.</li>
+</ul>
+<h3 id="shuffle-functions">Shuffle Functions</h3>
+<p>Shuffle functions enable flexible cross-lane exchanges where
+different work-items can read values from dynamically specified or
+relative lane positions without accessing local memory. These are
+defined primarily in OpenCL 2.1+, OpenCL 3.0, and the
+<code>cl_khr_subgroup_shuffle</code> extension.</p>
+<ul>
+<li><strong><code>sub_group_shuffle(T x, uint current_local_id)</code></strong><br />
+Enables arbitrary cross-lane indexing. Each calling work-item receives
+the value <code>x</code> from the lane specified by
+<code>current_local_id</code>.</li>
+<li><strong><code>sub_group_shuffle_down(T current, T next, uint delta)</code></strong><br />
+Shifts data across lanes by decreasing indices. The calling work-item
+receives the value of <code>current</code> from the lane at index
+<code>local_id + delta</code>. If the index exceeds the sub-group size,
+it wraps or draws from the <code>next</code> parameter depending on the
+overloaded signature.</li>
+<li><strong><code>sub_group_shuffle_up(T previous, T current, uint delta)</code></strong><br />
+Shifts data across lanes by increasing indices. The calling work-item
+receives the value from index <code>local_id - delta</code>.</li>
+<li><strong><code>sub_group_shuffle_xor(T x, uint mask)</code></strong><br />
+Exchanges data between lanes determined by a bitwise XOR of the caller's
+lane ID and the supplied <code>mask</code>. This is widely used for
+butterfly reduction trees and fast Fourier transforms (FFT).</li>
+</ul>
+<h3 id="reductions-and-scans">Reductions and Scans</h3>
+<p>Reductions and scans communicate data across all lanes to compute
+aggregate values collaboratively. The operation <code>[op]</code> can be
+<code>add</code>, <code>min</code>, or <code>max</code>.</p>
+<ul>
+<li><strong><code>sub_group_reduce_[op](T x)</code></strong><br />
+Computes the reduction of <code>x</code> across all work-items in the
+sub-group and returns the final scalar result to all work-items.</li>
+<li><strong><code>sub_group_scan_inclusive_[op](T x)</code></strong><br />
+Performs an inclusive prefix scan across the sub-group. The returned
+value for lane <span class="math inline">\(i\)</span> includes the
+elements of all lanes from <span class="math inline">\(0\)</span> up to
+and including <span class="math inline">\(i\)</span>.</li>
+<li><strong><code>sub_group_scan_exclusive_[op](T x)</code></strong><br />
+Performs an exclusive prefix scan across the sub-group. The returned
+value for lane <span class="math inline">\(i\)</span> includes the
+sum/extremum of elements from lane <span
+class="math inline">\(0\)</span> up to <span class="math inline">\(i -
+1\)</span>.</li>
+</ul>
+<h3 id="vote-and-ballot-functions">Vote and Ballot Functions</h3>
+<p>Vote and ballot operations evaluate condition states across multiple
+lanes simultaneously, communicating boolean evaluations across the
+entire sub-group.</p>
+<ul>
+<li><strong><code>sub_group_all(int predicate)</code></strong><br />
+Returns a non-zero value to all lanes if <code>predicate</code>
+evaluates to non-zero for every active work-item in the sub-group.</li>
+<li><strong><code>sub_group_any(int predicate)</code></strong><br />
+Returns a non-zero value if <code>predicate</code> evaluates to non-zero
+for at least one active work-item.</li>
+<li><strong><code>sub_group_ballot(int predicate)</code></strong><br />
+Collects the boolean <code>predicate</code> from each lane and returns a
+bitmask (typically a <code>uint4</code>) representing the status of each
+lane.</li>
+<li><strong><code>sub_group_elect()</code></strong><br />
+Elects a single active work-item (the one with the lowest local ID) to
+return true, while all other work-items return false, useful for
+single-lane divergence control.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

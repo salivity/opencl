@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Matrix Multiplication Using Tiled Local Memory - opencl</title>
+    <meta name="description" content="Optimizing matrix multiplication in OpenCL requires shifting the execution profile from being memory-bandwidth-bound to compute-bound. In a naive implementation, every dot-product step reads values directly from high-latency global memory, causing severe">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-matrix-multiplication-using-tiled-local-memory">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Matrix Multiplication Using Tiled Local Memory - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-matrix-multiplication-using-tiled-local-memory" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="Optimizing matrix multiplication in OpenCL requires shifting the execution profile from being memory-bandwidth-bound to compute-bound. In a naive implementation, every dot-product step reads values directly from high-latency global memory, causing severe" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-matrix-multiplication-using-tiled-local-memory">OpenCL
+Matrix Multiplication Using Tiled Local Memory</h1>
+<p>Optimizing matrix multiplication in OpenCL requires shifting the
+execution profile from being memory-bandwidth-bound to compute-bound. In
+a naive implementation, every dot-product step reads values directly
+from high-latency global memory, causing severe memory stalls. By
+implementing a tiled algorithm using OpenCL local memory—a fast on-chip
+scratchpad shared by work-items in a work-group—data loaded from global
+memory is reused multiple times across adjacent threads. This article
+explains how to structure matrices into blocks, synchronize data loading
+into local memory, and execute tiled matrix multiplication to achieve
+maximum performance on modern GPUs and accelerators.</p>
+<h3 id="the-naive-bottleneck">The Naive Bottleneck</h3>
+<p>In standard matrix multiplication (<span class="math inline">\(C = A
+\times B\)</span>), computing each element <span
+class="math inline">\(C_{row, col}\)</span> involves multiplying row
+elements of <span class="math inline">\(A\)</span> by column elements of
+<span class="math inline">\(B\)</span>. If matrices are sized <span
+class="math inline">\(N \times N\)</span>, a naive algorithm executes
+<span class="math inline">\(2N^3\)</span> global memory reads. Because
+global memory access incurs hundreds of clock cycles of latency, the
+execution units spend the vast majority of their time idling rather than
+performing arithmetic.</p>
+<h3 id="the-tiling-principle">The Tiling Principle</h3>
+<p>Tiling (or blocking) mitigates memory latency by partitioning large
+matrices into smaller sub-matrices of size <span class="math inline">\(T
+\times T\)</span> (where <span class="math inline">\(T\)</span>
+represents the tile size, typically 16 or 32). Instead of reading
+individual values repeatedly, an entire work-group cooperatively loads a
+tile from matrix <span class="math inline">\(A\)</span> and a tile from
+matrix <span class="math inline">\(B\)</span> into fast, on-chip
+<code>__local</code> memory.</p>
+<p>Once the tiles reside in local memory, each work-item computes a
+partial dot product using local data. Because local memory has
+significantly lower latency and substantially higher bandwidth than
+global memory, accessing each value <span
+class="math inline">\(T\)</span> times from local storage reduces global
+memory traffic by a factor of <span
+class="math inline">\(T\)</span>.</p>
+<h3 id="step-by-step-implementation-strategy">Step-by-Step
+Implementation Strategy</h3>
+<ol type="1">
+<li><strong>Allocate Local Buffers:</strong> Define two 2D arrays in
+OpenCL's <code>__local</code> memory space within the kernel to hold
+tiles of <span class="math inline">\(A\)</span> and <span
+class="math inline">\(B\)</span>.</li>
+<li><strong>Iterate Across Dimension K:</strong> Iterate over the shared
+dimension (<span class="math inline">\(K\)</span>) in steps of the tile
+size <span class="math inline">\(T\)</span>.</li>
+<li><strong>Cooperative Loading:</strong> Each work-item in the 2D
+work-group (sized <span class="math inline">\(T \times T\)</span>) reads
+exactly one element from matrix <span class="math inline">\(A\)</span>
+and one element from matrix <span class="math inline">\(B\)</span> from
+global memory and stores them in the designated local memory tile.</li>
+<li><strong>Enforce Memory Barriers:</strong> Call
+<code>barrier(CLK_LOCAL_MEM_FENCE)</code> to guarantee all work-items
+have finished loading data into the local buffers before computation
+begins.</li>
+<li><strong>Compute Partial Products:</strong> Iterate through the
+loaded local tile, multiplying corresponding elements and accumulating
+the partial sum in a private register.</li>
+<li><strong>Synchronize Before Next Load:</strong> Call
+<code>barrier(CLK_LOCAL_MEM_FENCE)</code> again to ensure all threads
+finish reading the current local tile before subsequent global memory
+reads overwrite the local memory.</li>
+<li><strong>Write Final Result:</strong> After all tiles along dimension
+<span class="math inline">\(K\)</span> have been processed, each
+work-item writes its accumulated register value to the corresponding
+position in global matrix <span class="math inline">\(C\)</span>.</li>
+</ol>
+<h3 id="opencl-tiled-kernel-example">OpenCL Tiled Kernel Example</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#define TILE_SIZE </span><span class="dv">16</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>__kernel <span class="dt">void</span> matmul_tiled<span class="op">(</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">const</span> <span class="dt">int</span> M<span class="op">,</span> <span class="dt">const</span> <span class="dt">int</span> N<span class="op">,</span> <span class="dt">const</span> <span class="dt">int</span> K<span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    __global <span class="dt">const</span> <span class="dt">float</span><span class="op">*</span> A<span class="op">,</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    __global <span class="dt">const</span> <span class="dt">float</span><span class="op">*</span> B<span class="op">,</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    __global <span class="dt">float</span><span class="op">*</span> C<span class="op">)</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Work-group and work-item identification</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> tx <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> ty <span class="op">=</span> get_local_id<span class="op">(</span><span class="dv">1</span><span class="op">);</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> row <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">1</span><span class="op">);</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> col <span class="op">=</span> get_global_id<span class="op">(</span><span class="dv">0</span><span class="op">);</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Shared local memory allocations</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    __local <span class="dt">float</span> A_tile<span class="op">[</span>TILE_SIZE<span class="op">][</span>TILE_SIZE<span class="op">];</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    __local <span class="dt">float</span> B_tile<span class="op">[</span>TILE_SIZE<span class="op">][</span>TILE_SIZE<span class="op">];</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> acc <span class="op">=</span> <span class="fl">0.0</span><span class="bu">f</span><span class="op">;</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    <span class="dt">int</span> numTiles <span class="op">=</span> <span class="op">(</span>K <span class="op">+</span> TILE_SIZE <span class="op">-</span> <span class="dv">1</span><span class="op">)</span> <span class="op">/</span> TILE_SIZE<span class="op">;</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> <span class="op">(</span><span class="dt">int</span> t <span class="op">=</span> <span class="dv">0</span><span class="op">;</span> t <span class="op">&lt;</span> numTiles<span class="op">;</span> <span class="op">++</span>t<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Cooperative load with bounds checking</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>        <span class="dt">int</span> a_col <span class="op">=</span> t <span class="op">*</span> TILE_SIZE <span class="op">+</span> tx<span class="op">;</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>        <span class="dt">int</span> b_row <span class="op">=</span> t <span class="op">*</span> TILE_SIZE <span class="op">+</span> ty<span class="op">;</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>        A_tile<span class="op">[</span>ty<span class="op">][</span>tx<span class="op">]</span> <span class="op">=</span> <span class="op">(</span>row <span class="op">&lt;</span> M <span class="op">&amp;&amp;</span> a_col <span class="op">&lt;</span> K<span class="op">)</span> <span class="op">?</span> A<span class="op">[</span>row <span class="op">*</span> K <span class="op">+</span> a_col<span class="op">]</span> <span class="op">:</span> <span class="fl">0.0</span><span class="bu">f</span><span class="op">;</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>        B_tile<span class="op">[</span>ty<span class="op">][</span>tx<span class="op">]</span> <span class="op">=</span> <span class="op">(</span>b_row <span class="op">&lt;</span> K <span class="op">&amp;&amp;</span> col <span class="op">&lt;</span> N<span class="op">)</span> <span class="op">?</span> B<span class="op">[</span>b_row <span class="op">*</span> N <span class="op">+</span> col<span class="op">]</span> <span class="op">:</span> <span class="fl">0.0</span><span class="bu">f</span><span class="op">;</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Synchronize to make sure the tile is loaded</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>        barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Compute partial dot product from local memory</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> <span class="op">(</span><span class="dt">int</span> k <span class="op">=</span> <span class="dv">0</span><span class="op">;</span> k <span class="op">&lt;</span> TILE_SIZE<span class="op">;</span> <span class="op">++</span>k<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>            acc <span class="op">+=</span> A_tile<span class="op">[</span>ty<span class="op">][</span>k<span class="op">]</span> <span class="op">*</span> B_tile<span class="op">[</span>k<span class="op">][</span>tx<span class="op">];</span></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>        <span class="co">// Synchronize before loading the next tile</span></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>        barrier<span class="op">(</span>CLK_LOCAL_MEM_FENCE<span class="op">);</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Write result to global memory</span></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>row <span class="op">&lt;</span> M <span class="op">&amp;&amp;</span> col <span class="op">&lt;</span> N<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>        C<span class="op">[</span>row <span class="op">*</span> N <span class="op">+</span> col<span class="op">]</span> <span class="op">=</span> acc<span class="op">;</span></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h3 id="performance-considerations">Performance Considerations</h3>
+<ul>
+<li><strong>Local Memory Bank Conflicts:</strong> Local memory is
+organized into distinct memory banks. If multiple work-items within the
+same half-warp or wavefront access different addresses within the same
+bank simultaneously, bank conflicts occur, serializing access.
+Structuring tile indices so that memory accesses are stride-free helps
+maintain conflict-free reads.</li>
+<li><strong>Tile Sizing:</strong> Choosing the optimal tile size depends
+on hardware limits. While a larger tile (e.g., <span
+class="math inline">\(32 \times 32\)</span>) allows for greater data
+reuse, it requires more local memory and registers, which can limit the
+number of active work-groups per compute unit (reducing occupancy).
+Testing dimensions of <span class="math inline">\(16 \times 16\)</span>
+and <span class="math inline">\(32 \times 32\)</span> is standard
+practice to balance register pressure against bandwidth savings.</li>
+<li><strong>Work-Group Dimension Alignment:</strong> To avoid
+unnecessary conditional overheads, align matrix dimensions to multiples
+of the tile size when possible, or pad inputs to match the grid
+structure.</li>
+</ul></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>

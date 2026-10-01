@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenCL Endianness Mismatch Between Host and Device - opencl</title>
+    <meta name="description" content="When an OpenCL host and device have conflicting endianness, transferring data between them leads to silent data corruption for any multibyte data type unless explicitly handled. OpenCL transfers raw byte buffers between the host and device memory spaces">
+    <link rel="canonical" href="https://salivity.github.io/opencl/article/open-cl-endianness-mismatch-between-host-and-device">
+    <link rel="search" type="application/opensearchdescription+xml" title="opencl" href="/opencl/opensearch.xml">
+    <link rel="icon" href="/opencl/favicon.ico">
+    <link rel="stylesheet" href="/opencl/css/style.css">
+    <link media="print" rel="stylesheet" href="/opencl/css/print.css">
+    <script src="/opencl/js/fuse.min.js"></script>
+    <script src="/opencl/js/script.js"></script>
+    <script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/4.1.3/tex-chtml.min.js" defer></script>
+    <script src="/monetize/monetize.js"></script>
+    <script src="/social/social.js"></script>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="OpenCL Endianness Mismatch Between Host and Device - opencl" />
+    <meta property="og:url" content="https://salivity.github.io/opencl/article/open-cl-endianness-mismatch-between-host-and-device" />
+    <meta property="og:image" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:secure_url" content="https://salivity.github.io/opencl/images/open-graph/default.webp" />
+    <meta property="og:image:width" content="1120" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:description" content="When an OpenCL host and device have conflicting endianness, transferring data between them leads to silent data corruption for any multibyte data type unless explicitly handled. OpenCL transfers raw byte buffers between the host and device memory spaces" />
+    <link rel="manifest" href="/opencl/pwa/manifest.json" />
+</head>
+<body>
+    <header>
+        <a href="/opencl/" aria-label="Go To Home Page" title="Go To Home Page" id="logo">
+            <span>salivity.github.io/</span><span>opencl</span>
+        </a>
+        <nav>
+            <ul class="header-links">
+                <li><a href="/opencl/search" title="Search" aria-label="Go To Search Page"><svg class="svg-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"></path></svg></a></li>
+                <li><a id="theme-toggle" title="Theme" href="javascript:void(0);" aria-label="Toggle Website Theme"></a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        
+    <div class="article-layout">
+        <aside id="profile-sidebar" class="profile-column" aria-label="Author Profile"></aside>
+        <div class="article-main-column">
+            <article><h1 id="opencl-endianness-mismatch-between-host-and-device">OpenCL
+Endianness Mismatch Between Host and Device</h1>
+<p>When an OpenCL host and device have conflicting endianness,
+transferring data between them leads to silent data corruption for any
+multibyte data type unless explicitly handled. OpenCL transfers raw byte
+buffers between the host and device memory spaces without performing
+automatic byte-order conversion. Consequently, multibyte integers and
+floating-point values will have their bytes reversed, causing
+calculations on the target device to process incorrect or invalid
+values.</p>
+<h3 id="the-mechanism-of-failure">The Mechanism of Failure</h3>
+<p>OpenCL commands such as <code>clEnqueueWriteBuffer</code>,
+<code>clEnqueueReadBuffer</code>, and shared virtual memory (SVM)
+operations treat memory buffers as raw byte streams. If a little-endian
+host (such as an x86 or standard ARM processor) transmits a 32-bit
+integer to a big-endian device (such as certain DSPs, FPGAs, or legacy
+architectures), the memory layout remains identical in byte order.</p>
+<p>For instance, the integer value <code>0x12345678</code> is stored on
+a little-endian host as the byte sequence
+<code>0x78 0x56 0x34 0x12</code>. When transferred directly to a
+big-endian device without transformation, the device interprets that
+identical byte sequence as <code>0x78563412</code>.</p>
+<h3 id="impact-on-different-data-types">Impact on Different Data
+Types</h3>
+<ul>
+<li><strong>Integers:</strong> Integer values will evaluate to
+drastically different numbers, breaking indexing, counters, loops, and
+bitmasks.</li>
+<li><strong>Floating-Point Numbers:</strong> Because IEEE 754
+floating-point representations rely on specific bit positions for the
+sign, exponent, and mantissa, reversing their byte order destroys the
+representation entirely. This typically results in <code>NaN</code> (Not
+a Number), subnormal values, or massive overflows.</li>
+<li><strong>Pointers and Structs:</strong> If structures containing
+multibyte fields or pointers are transferred, pointer addresses become
+invalid, risking memory access violations or kernel segmentation faults.
+Individual struct members also misalign with their expected values.</li>
+<li><strong>Single-Byte Data:</strong> Arrays of 8-bit integers
+(<code>char</code>, <code>uchar</code>) or raw ASCII text remain
+unaffected because single bytes do not depend on endianness.</li>
+</ul>
+<h3 id="detecting-endianness-discrepancies">Detecting Endianness
+Discrepancies</h3>
+<p>OpenCL provides runtime queries to detect the device's architecture.
+Applications can call <code>clGetDeviceInfo</code> using the
+<code>CL_DEVICE_ENDIAN_LITTLE</code> flag:</p>
+<ul>
+<li>A return value of <code>CL_TRUE</code> indicates a little-endian
+device.</li>
+<li>A return value of <code>CL_FALSE</code> indicates a big-endian
+device.</li>
+</ul>
+<p>By comparing this flag against the host system's native byte order
+(determined at compile-time or runtime), the application can identify
+whether a mismatch exists before dispatching memory commands.</p>
+<h3 id="resolution-strategies">Resolution Strategies</h3>
+<p>Because OpenCL does not provide automatic byte swapping, developers
+must implement manual byte-order conversion:</p>
+<ol type="1">
+<li><strong>Host-Side Conversion:</strong> The most common approach is
+converting the byte order on the host prior to
+<code>clEnqueueWriteBuffer</code> and after
+<code>clEnqueueReadBuffer</code>. Standard host functions (such as
+<code>bswap</code> built-ins in GCC/Clang or POSIX conversion routines
+like <code>htonl</code>) can reverse the byte order of the buffer.</li>
+<li><strong>Device-Side Conversion:</strong> If host CPU cycles are
+constrained, the kernel itself can perform byte swapping immediately
+after reading from global memory and right before writing back results.
+The kernel can use bit-shift operations or vector shuffling built-ins to
+reorder bytes.</li>
+</ol></article>
+        <div id="comments-container"></div>
+        <script>
+            const utterancesScript = document.createElement('script');
+            utterancesScript.setAttribute('src', 'https://utteranc.es/client.js');
+            utterancesScript.setAttribute('repo', 'salivity/opencl'); 
+            utterancesScript.setAttribute('issue-term', 'pathname'); 
+            utterancesScript.setAttribute('theme', localStorage.getItem('theme') === 'dark' ? 'github-dark' : 'github-light'); 
+            utterancesScript.setAttribute('crossorigin', 'anonymous');
+            utterancesScript.async = true;
+            document.getElementById('comments-container').appendChild(utterancesScript);
+        </script>
+    
+        </div>
+    </div>
+    
+    </main>
+    <footer>
+        <nav>
+            <ul class="social-links">
+            </ul>
+        </nav>
+        <nav>
+            <ul class="footer-links">
+                <li><a href="/opencl/privacy-policy">Privacy Policy</a></li>
+                <li><a href="/opencl/terms-and-conditions">Terms and Conditions</a></li>
+            </ul>
+        </nav>
+        <div class="copyright">
+            Copyright &copy; <span id="current-year"></span>
+        </div>
+    </footer>
+</body>
+</html>
